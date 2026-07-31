@@ -1,0 +1,10 @@
+{
+  "name": "Fit — Workout Tracker",
+  "short_name": "Fit",
+  "description": "Personal workout planning and progress tracking.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#0f172a",
+  "icons": []
+}
