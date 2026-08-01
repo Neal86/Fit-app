@@ -19,7 +19,6 @@ FitFlow is a responsive, offline-first workout planning and progress tracking ap
 - Reset controls and accessibility preference for reduced motion
 - Empty states, confirmation feedback, and runtime error recovery
 - Installable PWA metadata and offline service worker
-- Automated lint, tests, and production build in GitHub Actions
 - Production Docker image with Nginx SPA fallback, health check, cache policy, and security headers
 
 ## Local development
@@ -33,13 +32,13 @@ npm run dev
 
 Open `http://localhost:5173`.
 
-## Full quality gate
+## Local verification
 
 ```bash
 npm run check
 ```
 
-This runs ESLint, Vitest, TypeScript, and the Vite production build.
+This local command runs ESLint, Vitest, TypeScript, and the Vite production build. The repository does not include GitHub Actions or other CI workflows.
 
 ## Static hosting
 
