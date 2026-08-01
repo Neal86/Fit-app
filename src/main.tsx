@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
+import { initializeNativePlatform } from './native'
 import './styles.css'
 import './runtime.css'
 
@@ -29,6 +30,8 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren, { hasError:
   }
 }
 
+void initializeNativePlatform()
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
@@ -39,7 +42,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>,
 )
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+if ('serviceWorker' in navigator && import.meta.env.PROD && !window.location.protocol.startsWith('capacitor')) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => undefined)
   })
