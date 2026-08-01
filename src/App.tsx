@@ -1,119 +1,61 @@
-import { useMemo, useState } from 'react'
-import { Activity, CalendarDays, CheckCircle2, Dumbbell, Flame, Home, Play, Settings, Target, TrendingUp, UserRound } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, ArrowLeft, BarChart3, Check, CheckCircle2, ChevronRight, Download, Dumbbell, Flame, Home, Pause, Play, Plus, RotateCcw, Scale, Settings, ShieldCheck, Target, Timer, Trash2, TrendingUp, Upload, UserRound, X } from 'lucide-react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { initialState } from './data'
-import type { AppState, Profile, Workout } from './types'
+import type { AppState, Profile, WeightEntry, Workout } from './types'
 
-const STORAGE_KEY = 'fit-app-state-v1'
+const STORAGE_KEY = 'fit-app-state-v2'
+const cloneInitial = (): AppState => JSON.parse(JSON.stringify(initialState)) as AppState
+const uid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+const today = () => new Date().toISOString().slice(0, 10)
+const formatTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
-function loadState(): AppState {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    return saved ? JSON.parse(saved) as AppState : initialState
-  } catch {
-    return initialState
-  }
+function migrate(value: unknown): AppState {
+  if (!value || typeof value !== 'object') return cloneInitial()
+  const raw = value as Partial<AppState>
+  if (raw.version === 2 && raw.profile && Array.isArray(raw.workouts) && Array.isArray(raw.logs)) return raw as AppState
+  return cloneInitial()
 }
+function loadState() { try { return migrate(JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')) } catch { return cloneInitial() } }
 
 function App() {
   const [state, setState] = useState<AppState>(loadState)
-  const update = (next: AppState) => {
-    setState(next)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  }
+  const [toast, setToast] = useState('')
+  const update = (next: AppState, message?: string) => { setState(next); localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); if (message) setToast(message) }
+  useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 2400); return () => clearTimeout(timer) }, [toast])
+  useEffect(() => { document.documentElement.dataset.motion = state.preferences.reducedMotion ? 'reduced' : 'full' }, [state.preferences.reducedMotion])
 
-  const completeWorkout = (workout: Workout) => {
-    const today = new Date().toISOString().slice(0, 10)
-    update({
-      ...state,
-      logs: [{ id: crypto.randomUUID(), workoutId: workout.id, title: workout.title, date: today, duration: workout.duration, calories: workout.calories }, ...state.logs],
-    })
-  }
+  if (!state.profile.onboardingComplete) return <Onboarding state={state} onDone={(profile) => update({ ...state, profile: { ...profile, onboardingComplete: true } }, 'Your plan is ready')} />
 
-  return (
-    <div className="app-shell">
-      <Sidebar />
-      <main className="main-content">
-        <Routes>
-          <Route path="/" element={<Dashboard state={state} />} />
-          <Route path="/workouts" element={<Workouts workouts={state.workouts} />} />
-          <Route path="/workouts/:id" element={<WorkoutDetail workouts={state.workouts} onComplete={completeWorkout} />} />
-          <Route path="/progress" element={<Progress state={state} />} />
-          <Route path="/profile" element={<ProfilePage profile={state.profile} onSave={(profile) => update({ ...state, profile })} />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
-      <MobileNav />
-    </div>
-  )
+  return <div className="app-shell"><Sidebar /><main className="main-content"><Routes>
+    <Route path="/" element={<Dashboard state={state} />} />
+    <Route path="/workouts" element={<Workouts workouts={state.workouts} />} />
+    <Route path="/workouts/:id" element={<WorkoutDetail workouts={state.workouts} onComplete={(workout, elapsed, completedExerciseIds, notes) => update({ ...state, logs: [{ id: uid(), workoutId: workout.id, title: workout.title, startedAt: new Date(Date.now() - elapsed * 1000).toISOString(), completedAt: new Date().toISOString(), duration: Math.max(1, Math.round(elapsed / 60)), calories: Math.max(1, Math.round(workout.calories * Math.min(1.2, Math.max(.35, elapsed / (workout.duration * 60))))), completedExerciseIds, notes }, ...state.logs] }, 'Workout saved')} />} />
+    <Route path="/progress" element={<Progress state={state} onDelete={(id) => update({ ...state, logs: state.logs.filter((log) => log.id !== id) }, 'Workout removed')} onWeight={(entry) => update({ ...state, profile: { ...state.profile, weightKg: entry.weightKg }, weightHistory: [...state.weightHistory.filter((item) => item.date !== entry.date), entry].sort((a,b)=>a.date.localeCompare(b.date)) }, 'Weight updated')} />} />
+    <Route path="/profile" element={<ProfilePage state={state} onUpdate={update} />} />
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes></main><MobileNav />{toast && <div className="toast"><CheckCircle2 size={18}/>{toast}</div>}</div>
 }
 
-const nav = [
-  { to: '/', label: 'Home', icon: Home },
-  { to: '/workouts', label: 'Workouts', icon: Dumbbell },
-  { to: '/progress', label: 'Progress', icon: TrendingUp },
-  { to: '/profile', label: 'Profile', icon: UserRound },
-]
+const nav = [{to:'/',label:'Home',icon:Home},{to:'/workouts',label:'Workouts',icon:Dumbbell},{to:'/progress',label:'Progress',icon:TrendingUp},{to:'/profile',label:'Profile',icon:UserRound}]
+function Sidebar(){const {pathname}=useLocation();return <aside className="sidebar"><Link className="brand" to="/"><span className="brand-mark"><Activity/></span><span>FitFlow</span></Link><nav>{nav.map(({to,label,icon:Icon})=><Link key={to} className={pathname===to||to!=='/'&&pathname.startsWith(to)?'nav-link active':'nav-link'} to={to}><Icon size={19}/>{label}</Link>)}</nav><div className="sidebar-footer"><ShieldCheck size={17}/>Private by design</div></aside>}
+function MobileNav(){const {pathname}=useLocation();return <nav className="mobile-nav" aria-label="Primary">{nav.map(({to,label,icon:Icon})=><Link key={to} className={pathname===to||to!=='/'&&pathname.startsWith(to)?'active':''} to={to}><Icon/><span>{label}</span></Link>)}</nav>}
 
-function Sidebar() {
-  const location = useLocation()
-  return <aside className="sidebar"><div className="brand"><span className="brand-mark"><Activity size={22} /></span><span>Fit</span></div><nav>{nav.map(({ to, label, icon: Icon }) => <Link key={to} className={location.pathname === to ? 'nav-link active' : 'nav-link'} to={to}><Icon size={19} />{label}</Link>)}</nav><div className="sidebar-footer"><Settings size={18} /> v1.0</div></aside>
-}
+function Onboarding({state,onDone}:{state:AppState;onDone:(p:Profile)=>void}){const [form,setForm]=useState(state.profile);return <main className="onboarding"><div className="onboarding-card"><div className="brand onboarding-brand"><span className="brand-mark"><Activity/></span><span>FitFlow</span></div><span className="eyebrow">Personal setup</span><h1>Build a plan that fits your life.</h1><p>Set your baseline. Everything stays on this device unless you export it.</p><form className="form onboarding-form" onSubmit={e=>{e.preventDefault();onDone(form)}}><label>First name<input required maxLength={40} value={form.name} onChange={e=>setForm({...form,name:e.target.value.trimStart()})}/></label><label>Primary goal<select value={form.goal} onChange={e=>setForm({...form,goal:e.target.value as Profile['goal']})}><option>Build muscle</option><option>Lose fat</option><option>Improve endurance</option><option>Stay active</option></select></label><label>Experience<select value={form.level} onChange={e=>setForm({...form,level:e.target.value as Profile['level']})}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label><label>Sessions per week<input type="number" min="1" max="7" value={form.weeklyTarget} onChange={e=>setForm({...form,weeklyTarget:Number(e.target.value)})}/></label><label>Height (cm)<input type="number" min="120" max="230" value={form.heightCm} onChange={e=>setForm({...form,heightCm:Number(e.target.value)})}/></label><label>Weight (kg)<input type="number" min="30" max="300" step=".1" value={form.weightKg} onChange={e=>setForm({...form,weightKg:Number(e.target.value)})}/></label><button className="primary-button wide" type="submit">Create my plan <ChevronRight size={18}/></button></form></div></main>}
 
-function MobileNav() {
-  const location = useLocation()
-  return <nav className="mobile-nav">{nav.map(({ to, label, icon: Icon }) => <Link key={to} className={location.pathname === to ? 'active' : ''} to={to}><Icon size={20} /><span>{label}</span></Link>)}</nav>
-}
+function Dashboard({state}:{state:AppState}){const weekStart=Date.now()-7*86400000;const weekly=state.logs.filter(l=>new Date(l.completedAt).getTime()>=weekStart);const next=state.workouts[weekly.length%state.workouts.length];const calories=weekly.reduce((s,l)=>s+l.calories,0);const minutes=weekly.reduce((s,l)=>s+l.duration,0);const completion=Math.min(100,Math.round(weekly.length/state.profile.weeklyTarget*100));return <section><PageHeader eyebrow="Today" title={`Ready, ${state.profile.name}?`} subtitle="Stay consistent, train with intent, and let the small wins compound."/><div className="hero-card"><div><span className="pill">Recommended next</span><h2>{next.title}</h2><p>{next.description}</p><div className="hero-meta"><span><Timer/> {next.duration} min</span><span><Flame/> {next.calories} kcal</span></div><Link className="primary-button" to={`/workouts/${next.id}`}><Play size={17} fill="currentColor"/>Start workout</Link></div><div className="progress-ring" style={{'--progress':`${completion*3.6}deg`} as React.CSSProperties}><div><strong>{completion}%</strong><span>weekly goal</span></div></div></div><div className="stats-grid"><Stat icon={<CheckCircle2/>} label="Sessions" value={`${weekly.length}/${state.profile.weeklyTarget}`}/><Stat icon={<Flame/>} label="Calories" value={calories.toLocaleString()}/><Stat icon={<Timer/>} label="Minutes" value={String(minutes)}/><Stat icon={<Target/>} label="Goal" value={state.profile.goal}/></div><SectionTitle title="Your program" subtitle="Four balanced sessions for strength, fitness, and recovery." action={<Link to="/workouts">View all</Link>}/><div className="cards-grid">{state.workouts.slice(0,3).map(w=><WorkoutCard key={w.id} workout={w}/>)}</div></section>}
+function Workouts({workouts}:{workouts:Workout[]}){const [query,setQuery]=useState('');const filtered=workouts.filter(w=>`${w.title} ${w.day} ${w.difficulty}`.toLowerCase().includes(query.toLowerCase()));return <section><PageHeader eyebrow="Training plan" title="Your workouts" subtitle="Choose the session that matches your energy and schedule."/><div className="toolbar"><input aria-label="Search workouts" placeholder="Search workouts…" value={query} onChange={e=>setQuery(e.target.value)}/><span>{filtered.length} sessions</span></div><div className="cards-grid">{filtered.map(w=><WorkoutCard key={w.id} workout={w}/>)}</div>{!filtered.length&&<Empty title="No workouts found" text="Try a different search term."/>}</section>}
+function WorkoutCard({workout}:{workout:Workout}){return <Link to={`/workouts/${workout.id}`} className="workout-card"><div className="card-top"><div className="card-icon"><Dumbbell/></div><span className="difficulty">{workout.difficulty}</span></div><span>{workout.day}</span><h3>{workout.title}</h3><p>{workout.description}</p><div className="card-meta"><span>{workout.exercises.length} exercises</span><span>{workout.duration} min</span></div></Link>}
 
-function Dashboard({ state }: { state: AppState }) {
-  const thisWeek = state.logs.filter((log) => Date.now() - new Date(log.date).getTime() < 7 * 86400000)
-  const calories = thisWeek.reduce((sum, log) => sum + log.calories, 0)
-  const minutes = thisWeek.reduce((sum, log) => sum + log.duration, 0)
-  const nextWorkout = state.workouts[thisWeek.length % state.workouts.length]
-  return <section><PageHeader eyebrow="Welcome back" title={`${state.profile.name}, ready to move?`} subtitle="Small, consistent sessions create lasting results." />
-    <div className="hero-card"><div><span className="pill">Next workout</span><h2>{nextWorkout.title}</h2><p>{nextWorkout.exercises.length} exercises · {nextWorkout.duration} min</p><Link className="primary-button" to={`/workouts/${nextWorkout.id}`}><Play size={17} fill="currentColor" /> Start workout</Link></div><div className="hero-art"><Dumbbell size={70} /></div></div>
-    <div className="stats-grid"><Stat icon={<CheckCircle2 />} label="Workouts" value={`${thisWeek.length}/${state.profile.weeklyTarget}`} /><Stat icon={<Flame />} label="Calories" value={calories.toLocaleString()} /><Stat icon={<CalendarDays />} label="Minutes" value={minutes.toString()} /><Stat icon={<Target />} label="Current goal" value={state.profile.goal} /></div>
-    <div className="section-heading"><div><h2>Your program</h2><p>Balanced sessions built around your goal.</p></div><Link to="/workouts">View all</Link></div>
-    <div className="cards-grid">{state.workouts.slice(0, 3).map((workout) => <WorkoutCard key={workout.id} workout={workout} />)}</div>
-  </section>
-}
+function WorkoutDetail({workouts,onComplete}:{workouts:Workout[];onComplete:(w:Workout,e:number,ids:string[],notes:string)=>void}){const {id}=useParams();const navigate=useNavigate();const workout=workouts.find(w=>w.id===id);const [done,setDone]=useState<string[]>([]);const [seconds,setSeconds]=useState(0);const [running,setRunning]=useState(false);const [notes,setNotes]=useState('');const timerRef=useRef<number>();useEffect(()=>{if(running)timerRef.current=window.setInterval(()=>setSeconds(s=>s+1),1000);return()=>clearInterval(timerRef.current)},[running]);if(!workout)return <Navigate to="/workouts" replace/>;const finish=()=>{onComplete(workout,Math.max(seconds,workout.duration*60),done,notes);navigate('/progress')};return <section><Link className="back-link" to="/workouts"><ArrowLeft/>All workouts</Link><PageHeader eyebrow={`${workout.day} · ${workout.difficulty}`} title={workout.title} subtitle={workout.description}/><div className="session-bar"><div><span>Session timer</span><strong>{formatTime(seconds)}</strong></div><button className="secondary-button" onClick={()=>setRunning(!running)}>{running?<><Pause/>Pause</>:<><Play/>Start timer</>}</button><div><span>Progress</span><strong>{done.length}/{workout.exercises.length}</strong></div></div><div className="exercise-list">{workout.exercises.map((e,i)=>{const checked=done.includes(e.id);return <button key={e.id} className={checked?'exercise-row done':'exercise-row'} onClick={()=>setDone(checked?done.filter(x=>x!==e.id):[...done,e.id])}><span className="exercise-number">{checked?<Check/>:i+1}</span><span className="exercise-main"><strong>{e.name}</strong><small>{e.category}{e.notes?` · ${e.notes}`:''}</small></span><span><strong>{e.sets} × {e.reps}</strong><small>{e.restSeconds}s rest</small></span></button>})}</div><label className="notes-field">Session notes<textarea placeholder="Weights, reps, how you felt…" value={notes} onChange={e=>setNotes(e.target.value)} maxLength={500}/></label><button className="primary-button finish-button" disabled={!done.length} onClick={finish}><CheckCircle2/>Finish and save workout</button></section>}
 
-function Workouts({ workouts }: { workouts: Workout[] }) {
-  return <section><PageHeader eyebrow="Training plan" title="Your workouts" subtitle="Follow the plan or choose the session that fits your day." /><div className="cards-grid">{workouts.map((workout) => <WorkoutCard key={workout.id} workout={workout} />)}</div></section>
-}
+function Progress({state,onDelete,onWeight}:{state:AppState;onDelete:(id:string)=>void;onWeight:(e:WeightEntry)=>void}){const [weight,setWeight]=useState(state.profile.weightKg);const totals=useMemo(()=>({cal:state.logs.reduce((s,l)=>s+l.calories,0),min:state.logs.reduce((s,l)=>s+l.duration,0)}),[state.logs]);const max=Math.max(...state.logs.slice(0,8).map(l=>l.calories),1);const first=state.weightHistory[0]?.weightKg??state.profile.weightKg;const change=state.profile.weightKg-first;return <section><PageHeader eyebrow="Analytics" title="Your progress" subtitle="Track consistency, training volume, and body-weight trends."/><div className="stats-grid"><Stat icon={<Dumbbell/>} label="Total sessions" value={String(state.logs.length)}/><Stat icon={<Flame/>} label="Calories" value={totals.cal.toLocaleString()}/><Stat icon={<Timer/>} label="Training minutes" value={totals.min.toLocaleString()}/><Stat icon={<Scale/>} label="Weight change" value={`${change>0?'+':''}${change.toFixed(1)} kg`}/></div><div className="progress-layout"><div className="panel"><SectionTitle title="Recent activity" subtitle="Calories by completed session"/>{state.logs.length?<div className="chart">{state.logs.slice(0,8).reverse().map(l=><div className="chart-column" key={l.id}><div className="chart-bar" style={{height:`${Math.max(18,l.calories/max*150)}px`}}/><span>{new Date(l.completedAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></div>)}</div>:<Empty title="No workouts yet" text="Complete your first session to see activity here."/>}</div><form className="panel weight-card" onSubmit={e=>{e.preventDefault();onWeight({id:uid(),date:today(),weightKg:Number(weight)})}}><Scale/><h2>Log today’s weight</h2><p>Use the same scale and time of day for a steadier trend.</p><div className="weight-input"><input type="number" min="30" max="300" step=".1" value={weight} onChange={e=>setWeight(Number(e.target.value))}/><span>kg</span></div><button className="primary-button" type="submit"><Plus/>Save entry</button></form></div><div className="panel"><SectionTitle title="Workout history" subtitle={`${state.logs.length} completed sessions`}/>{state.logs.length?<div className="history-list">{state.logs.map(l=><div key={l.id}><span className="history-icon"><CheckCircle2/></span><span><strong>{l.title}</strong><small>{new Date(l.completedAt).toLocaleString()}</small>{l.notes&&<small>{l.notes}</small>}</span><span>{l.duration} min · {l.calories} kcal</span><button className="icon-button danger" aria-label={`Delete ${l.title}`} onClick={()=>onDelete(l.id)}><Trash2/></button></div>)}</div>:<Empty title="Your history is empty" text="Finished workouts will appear here."/>}</div></section>}
 
-function WorkoutCard({ workout }: { workout: Workout }) {
-  return <Link to={`/workouts/${workout.id}`} className="workout-card"><div className="card-icon"><Dumbbell /></div><span>{workout.day}</span><h3>{workout.title}</h3><p>{workout.exercises.length} exercises</p><div className="card-meta"><span>{workout.duration} min</span><span>{workout.calories} kcal</span></div></Link>
-}
+function ProfilePage({state,onUpdate}:{state:AppState;onUpdate:(s:AppState,m?:string)=>void}){const [form,setForm]=useState(state.profile);const fileRef=useRef<HTMLInputElement>(null);const bmi=(form.weightKg/((form.heightCm/100)**2)).toFixed(1);const exportData=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`fitflow-backup-${today()}.json`;a.click();URL.revokeObjectURL(a.href)};const importData=async(file?:File)=>{if(!file)return;try{const parsed=migrate(JSON.parse(await file.text()));onUpdate(parsed,'Backup imported')}catch{alert('This backup file is not valid.')}};return <section><PageHeader eyebrow="Account" title="Profile & settings" subtitle="Update your plan, accessibility preferences, and local data."/><div className="profile-layout"><form className="panel form" onSubmit={e=>{e.preventDefault();onUpdate({...state,profile:form},'Profile saved')}}><label>Name<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Goal<select value={form.goal} onChange={e=>setForm({...form,goal:e.target.value as Profile['goal']})}><option>Build muscle</option><option>Lose fat</option><option>Improve endurance</option><option>Stay active</option></select></label><label>Experience<select value={form.level} onChange={e=>setForm({...form,level:e.target.value as Profile['level']})}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label><label>Weekly target<input type="number" min="1" max="7" value={form.weeklyTarget} onChange={e=>setForm({...form,weeklyTarget:Number(e.target.value)})}/></label><label>Height (cm)<input type="number" min="120" max="230" value={form.heightCm} onChange={e=>setForm({...form,heightCm:Number(e.target.value)})}/></label><label>Weight (kg)<input type="number" min="30" max="300" step=".1" value={form.weightKg} onChange={e=>setForm({...form,weightKg:Number(e.target.value)})}/></label><button className="primary-button wide" type="submit">Save profile</button></form><aside className="panel profile-summary"><div className="avatar">{form.name.slice(0,1).toUpperCase()}</div><h2>{form.name}</h2><p>{form.level}</p><div><span>Goal</span><strong>{form.goal}</strong></div><div><span>Weekly target</span><strong>{form.weeklyTarget} workouts</strong></div><div><span>BMI</span><strong>{bmi}</strong></div></aside></div><div className="settings-grid"><div className="panel"><SectionTitle title="Preferences" subtitle="Device-level app behavior"/><Toggle label="Reduce motion" checked={state.preferences.reducedMotion} onChange={v=>onUpdate({...state,preferences:{...state.preferences,reducedMotion:v}},'Preference updated')}/><Toggle label="Sound feedback" checked={state.preferences.soundEnabled} onChange={v=>onUpdate({...state,preferences:{...state.preferences,soundEnabled:v}},'Preference updated')}/></div><div className="panel"><SectionTitle title="Your data" subtitle="Portable, local, and under your control"/><div className="data-actions"><button className="secondary-button" onClick={exportData}><Download/>Export backup</button><button className="secondary-button" onClick={()=>fileRef.current?.click()}><Upload/>Import backup</button><input ref={fileRef} hidden type="file" accept="application/json" onChange={e=>importData(e.target.files?.[0])}/><button className="secondary-button danger" onClick={()=>{if(confirm('Reset all FitFlow data on this device?'))onUpdate(cloneInitial(),'App reset')}}><RotateCcw/>Reset app</button></div></div></div></section>}
 
-function WorkoutDetail({ workouts, onComplete }: { workouts: Workout[]; onComplete: (workout: Workout) => void }) {
-  const { id } = useParams(); const navigate = useNavigate(); const workout = workouts.find((item) => item.id === id)
-  const [done, setDone] = useState<string[]>([])
-  if (!workout) return <Navigate to="/workouts" replace />
-  const finish = () => { onComplete(workout); navigate('/progress') }
-  return <section><PageHeader eyebrow={workout.day} title={workout.title} subtitle={`${workout.duration} minutes · ${workout.calories} estimated calories`} />
-    <div className="exercise-list">{workout.exercises.map((exercise, index) => { const checked = done.includes(exercise.id); return <button key={exercise.id} className={checked ? 'exercise-row done' : 'exercise-row'} onClick={() => setDone(checked ? done.filter((item) => item !== exercise.id) : [...done, exercise.id])}><span className="exercise-number">{checked ? <CheckCircle2 /> : index + 1}</span><span className="exercise-main"><strong>{exercise.name}</strong><small>{exercise.category}</small></span><span><strong>{exercise.sets} × {exercise.reps}</strong><small>{exercise.rest} rest</small></span></button> })}</div>
-    <button className="primary-button finish-button" disabled={done.length !== workout.exercises.length} onClick={finish}><CheckCircle2 size={18} /> Complete workout</button>
-  </section>
-}
-
-function Progress({ state }: { state: AppState }) {
-  const totalCalories = state.logs.reduce((sum, log) => sum + log.calories, 0)
-  const totalMinutes = state.logs.reduce((sum, log) => sum + log.duration, 0)
-  const max = Math.max(...state.logs.map((log) => log.calories), 1)
-  return <section><PageHeader eyebrow="Analytics" title="Your progress" subtitle="See the work adding up over time." /><div className="stats-grid"><Stat icon={<Dumbbell />} label="Total sessions" value={String(state.logs.length)} /><Stat icon={<Flame />} label="Calories burned" value={totalCalories.toLocaleString()} /><Stat icon={<CalendarDays />} label="Training minutes" value={totalMinutes.toLocaleString()} /><Stat icon={<TrendingUp />} label="Consistency" value={`${Math.min(100, state.logs.length * 12)}%`} /></div>
-    <div className="panel"><h2>Recent activity</h2><div className="chart">{state.logs.slice(0, 8).reverse().map((log) => <div className="chart-column" key={log.id}><div className="chart-bar" style={{ height: `${Math.max(18, (log.calories / max) * 150)}px` }} title={`${log.calories} kcal`} /><span>{new Date(log.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></div>)}</div></div>
-    <div className="panel"><h2>Workout history</h2><div className="history-list">{state.logs.map((log) => <div key={log.id}><span className="history-icon"><CheckCircle2 /></span><span><strong>{log.title}</strong><small>{new Date(log.date).toLocaleDateString()}</small></span><span>{log.duration} min · {log.calories} kcal</span></div>)}</div></div>
-  </section>
-}
-
-function ProfilePage({ profile, onSave }: { profile: Profile; onSave: (profile: Profile) => void }) {
-  const [form, setForm] = useState(profile); const [saved, setSaved] = useState(false)
-  const bmi = useMemo(() => (form.weightKg / (1.78 * 1.78)).toFixed(1), [form.weightKg])
-  return <section><PageHeader eyebrow="Account" title="Profile & goals" subtitle="Keep your plan aligned with your current target." /><div className="profile-layout"><form className="panel form" onSubmit={(event) => { event.preventDefault(); onSave(form); setSaved(true); setTimeout(() => setSaved(false), 2000) }}><label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label><label>Goal<select value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })}><option>Build muscle</option><option>Lose fat</option><option>Improve endurance</option><option>Stay active</option></select></label><label>Experience<select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label><label>Weekly target<input type="number" min="1" max="7" value={form.weeklyTarget} onChange={(e) => setForm({ ...form, weeklyTarget: Number(e.target.value) })} /></label><label>Weight (kg)<input type="number" min="30" max="250" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: Number(e.target.value) })} /></label><button className="primary-button" type="submit">{saved ? 'Saved' : 'Save changes'}</button></form><aside className="panel profile-summary"><div className="avatar">{form.name.slice(0, 1).toUpperCase()}</div><h2>{form.name}</h2><p>{form.level}</p><div><span>Current goal</span><strong>{form.goal}</strong></div><div><span>Weekly target</span><strong>{form.weeklyTarget} workouts</strong></div><div><span>Estimated BMI</span><strong>{bmi}</strong></div></aside></div></section>
-}
-
-function PageHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) { return <header className="page-header"><span>{eyebrow}</span><h1>{title}</h1><p>{subtitle}</p></header> }
-function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <div className="stat-card"><span>{icon}</span><div><small>{label}</small><strong>{value}</strong></div></div> }
-
+function Toggle({label,checked,onChange}:{label:string;checked:boolean;onChange:(v:boolean)=>void}){return <label className="toggle-row"><span>{label}</span><input type="checkbox" checked={checked} onChange={e=>onChange(e.target.checked)}/><i/></label>}
+function PageHeader({eyebrow,title,subtitle}:{eyebrow:string;title:string;subtitle:string}){return <header className="page-header"><span>{eyebrow}</span><h1>{title}</h1><p>{subtitle}</p></header>}
+function SectionTitle({title,subtitle,action}:{title:string;subtitle:string;action?:React.ReactNode}){return <div className="section-heading"><div><h2>{title}</h2><p>{subtitle}</p></div>{action}</div>}
+function Stat({icon,label,value}:{icon:React.ReactNode;label:string;value:string}){return <div className="stat-card"><span>{icon}</span><div><small>{label}</small><strong>{value}</strong></div></div>}
+function Empty({title,text}:{title:string;text:string}){return <div className="empty"><BarChart3/><strong>{title}</strong><span>{text}</span></div>}
 export default App
