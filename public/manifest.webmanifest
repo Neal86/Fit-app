@@ -1,10 +1,13 @@
 {
-  "name": "Fit — Workout Tracker",
-  "short_name": "Fit",
-  "description": "Personal workout planning and progress tracking.",
+  "name": "FitFlow — Workout Tracker",
+  "short_name": "FitFlow",
+  "description": "Private, offline-first workout planning and progress tracking.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f4f7fb",
+  "background_color": "#f5f7fb",
   "theme_color": "#0f172a",
-  "icons": []
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
 }
