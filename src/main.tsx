@@ -5,6 +5,7 @@ import App from './App'
 import { initializeNativePlatform } from './native'
 import './styles.css'
 import './runtime.css'
+import './native.css'
 
 class ErrorBoundary extends React.Component<React.PropsWithChildren, { hasError: boolean }> {
   state = { hasError: false }
