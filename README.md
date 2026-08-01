@@ -1,12 +1,12 @@
 # FitFlow
 
-FitFlow is a responsive, offline-first workout planning and progress tracking application built with React, TypeScript, and Vite.
+FitFlow is a single-codebase fitness application for Web, iOS, and Android. The React/TypeScript application runs on the web and is packaged for native mobile platforms with Capacitor.
 
 ## Delivered product scope
 
 - Guided first-run onboarding
 - Personalized goals, experience level, height, weight, and weekly target
-- Responsive desktop and mobile navigation
+- Responsive desktop, mobile web, iPhone, iPad, and Android layouts
 - Dashboard with weekly completion, calories, minutes, and next-workout recommendation
 - Searchable workout library
 - Structured exercise-by-exercise workout flow
@@ -14,16 +14,20 @@ FitFlow is a responsive, offline-first workout planning and progress tracking ap
 - Workout history with delete support
 - Body-weight logging and trend summary
 - Correct BMI calculation from saved height and weight
-- Local versioned persistence with safe fallback
+- Versioned local persistence with safe fallback
 - JSON backup export and import
-- Reset controls and accessibility preference for reduced motion
+- Reset controls and reduced-motion preference
 - Empty states, confirmation feedback, and runtime error recovery
-- Installable PWA metadata and offline service worker
-- Production Docker image with Nginx SPA fallback, health check, cache policy, and security headers
+- Web PWA installation and offline service worker
+- Capacitor iOS and Android runtime configuration
+- Native status bar, Android back-button behavior, network-state integration, and haptic support
+- iOS safe-area and Android full-screen viewport handling
+- Apple privacy manifest and Android secure-network configuration
+- Production Docker image with Nginx SPA fallback, health check, caching, and security headers
 
-## Local development
+## Install and run the Web application
 
-Requires Node.js 20.19 or newer.
+Requires Node.js 22 or newer.
 
 ```bash
 npm install
@@ -32,38 +36,60 @@ npm run dev
 
 Open `http://localhost:5173`.
 
-## Local verification
+## Production Web build
 
 ```bash
-npm run check
+npm run build
 ```
 
-This local command runs ESLint, Vitest, TypeScript, and the Vite production build. The repository does not include GitHub Actions or other CI workflows.
+The output directory is `dist`.
 
-## Static hosting
+## iOS and Android
 
-- Build command: `npm run build`
-- Output directory: `dist`
-- Configure unknown routes to serve `index.html`
+Create the native project folders once after installing dependencies:
 
-Suitable hosts include Vercel, Netlify, Cloudflare Pages, and similar static platforms.
+```bash
+npm run native:add:ios
+npm run native:add:android
+npm run native:sync
+```
+
+Open the projects:
+
+```bash
+npm run native:open:ios
+npm run native:open:android
+```
+
+After any Web code change, refresh both native applications with:
+
+```bash
+npm run native:sync
+```
+
+Application identity:
+
+- Product name: `FitFlow`
+- iOS bundle ID: `com.fitflow.app`
+- Android application ID: `com.fitflow.app`
+
+See `STORE_RELEASE.md` for signing and submission instructions.
 
 ## Docker / Coolify
 
-The repository includes a production multi-stage `Dockerfile`.
-
+- Build pack: Dockerfile
 - Container port: `80`
 - Health endpoint: `/healthz`
-- No environment variables are required for the offline-first edition
+- Environment variables: none required for the local-first edition
 
-In Coolify, select **Dockerfile** as the build pack and expose port `80`.
+No GitHub Actions or automatic CI workflow is included.
 
 ## Data and privacy
 
-The delivered edition is intentionally single-user and local-first. Profile details, workout history, settings, and weight entries remain in the browser on the current device. Users can export a JSON backup from the Profile page.
+Profile details, workout history, settings, notes, and weight entries remain on the user's device. The application does not require a cloud account and does not transmit fitness data in the delivered local-first edition. Review `PRIVACY.md` before public distribution and replace the business contact placeholder.
 
-No medical diagnosis or treatment guidance is provided. Calorie values are estimates and should not be treated as clinical measurements.
+FitFlow is not a medical device. Calories and BMI are informational estimates and are not medical diagnosis or treatment guidance.
 
-## Commercial multi-user extension
+## Store publication boundary
 
-Cloud accounts, subscriptions, coach dashboards, and cross-device sync require an authenticated backend and privacy/compliance review. The versioned domain model in `src/types.ts` is ready to be placed behind an API without redesigning the user interface.
+The source code and native platform configuration are included. Producing signed App Store and Google Play binaries requires the owner's Apple Developer and Google Play credentials, signing certificates/keys, final legal contact details, screenshots, pricing, and store-account approvals. These secrets must not be committed to GitHub.
