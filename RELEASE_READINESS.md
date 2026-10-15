@@ -14,6 +14,7 @@ No automatic CI, production deployment, paid service, live email/AI provider, re
 - Metric/imperial weight, load and height input/display, with canonical kg/cm retained across repeated switches, backup and sync; see [measurement behavior](docs/MEASUREMENT_UNITS.md)
 - Durable session snapshots; real elapsed start/pause/resume; completed/timed sets, load, reps, RPE, warm-up flags, rest countdown and prior-set references
 - Partial completion confirmation, stable identities and duplicate/stale finish protection; editable plans do not rewrite active or historical sessions
+- Explicit reviewed mid-session exercise replacement, preserving completed rows and history, assigning fresh identities to blank replacement rows and fencing stale session/route/draft callbacks; see [replacement behavior](docs/SESSION_REPLACEMENT.md)
 - Editable schedules, exercises and notes; reusable exercise catalog search/categories from existing templates/user entries
 - Weekly schedule preview constrained by the user's chosen days and maximum planned duration; no silent shortening or automatic intensity prescription
 - Twenty reversible prior plan versions, with confirmation before restoring/replacing a plan
@@ -53,11 +54,11 @@ No automatic CI, production deployment, paid service, live email/AI provider, re
 
 ## Verification
 
-On 2026-10-15, the integrated source passed `npm run check`: 334 frontend unit/component/native-runtime tests, 80 backend security/HTTP/race/migration tests, and 4 real client/server protocol tests (418 total), plus ESLint, TypeScript, Vite and offline-shell generation. This includes metric/imperial entry and readouts, canonical-value precision, failed-save and unit-switch draft handling, coach collaboration, async session/view invalidation, recipient-independent invitation budgets, timestamp-ordered prior-set references and exclusion of future-dated imported workouts from the current weekly total. The test harness caps parallel workers at four; the real 10 MiB boundary fixture has a 15-second test-only budget after a shared-CPU five-second timeout, with its assertions unchanged.
+On 2026-10-15, the integrated source passed `npm run check`: 389 frontend unit/component/native-runtime tests, 80 backend security/HTTP/race/migration tests, and 5 real client/server protocol tests (474 total), plus ESLint, TypeScript, Vite and offline-shell generation. This includes mid-session replacement, preserved completed/history snapshots, stale session/route/raw-draft callbacks, storage reload, backup and manual cloud round trips; metric/imperial entry and readouts, canonical-value precision, failed-save and unit-switch draft handling, coach collaboration, async session/view invalidation, recipient-independent invitation budgets, timestamp-ordered prior-set references and exclusion of future-dated imported workouts from the current weekly total. The test harness caps parallel workers at four; the real 10 MiB boundary fixture has a 15-second test-only budget after a shared-CPU five-second timeout, with its assertions unchanged. Overlapping independent aggregate runs encountered timing failures in UI and synthetic-mail tests under shared CPU contention; the integrated aggregate completed successfully. The replacement work did not relax test deadlines or assertions.
 
 | Gate | Evidence/status |
 |---|---|
-| Local lint/unit/component/API/protocol/build | Passed: 334 frontend + 80 backend + 4 protocol tests (418 total), lint and production build |
+| Local lint/unit/component/API/protocol/build | Passed: 389 frontend + 80 backend + 5 protocol tests (474 total), lint and production build |
 | Production dependency audit | Re-run 2026-10-15: 0 known production vulnerabilities |
 | Android + iOS `cap sync` | Passed again on integrated build; copies assets/plugins only, not native compilation |
 | Native XML/plist/Xcode resource parsing | Passed again on integrated projects: Android XML, iOS plist/privacy and shared scheme syntax |
@@ -82,13 +83,13 @@ npm run test:e2e
 
 The local-only frontend can use Node 22+ with `npm run lint`, `npm run test`, `npm run build`. `cap sync` is not native compilation. A successful source test is not device/store approval.
 
-Independent review rechecked the earlier delayed-email/password race, wide-payload memory amplification, nutrition drafts and account guards. The latest review independently passed 37 backend tests, 95 frontend tests and 3 isolated regressions, plus four capacity-probe scenarios. Its three findings are closed: invitation capacity no longer distinguishes eligible recipients, hidden views cannot revive delayed collaborator reads, and session invalidation cancels local restore/export. A subsequent independent unit-preference review passed 150 focused tests and 9 additional probes, including 3,000 seeded exact round-trip cases, with no actionable findings. This is source review, not a penetration test or production certification.
+Independent review rechecked the earlier delayed-email/password race, wide-payload memory amplification, nutrition drafts and account guards. The account/coaching review independently passed 37 backend tests, 95 frontend tests and 3 isolated regressions, plus four capacity-probe scenarios. Its three findings are closed: invitation capacity no longer distinguishes eligible recipients, hidden views cannot revive delayed collaborator reads, and session invalidation cancels local restore/export. A subsequent independent unit-preference review passed 150 focused tests and 9 additional probes, including 3,000 seeded exact round-trip cases, with no actionable findings. The replacement review independently passed 140 focused tests, including 31 additional probes. It closed retained-callback and raw-edit/route-return invalidation gaps, verified unchanged completed/history rows and capacity boundaries, and found no unresolved actionable defect in the final snapshot. These retained-callback cases use synthetic component probes, not observed browser interactions. This is source review, not a penetration test or production certification.
 
 ## Full-product gap matrix
 
 | Area | Current code | Remaining final-product gate |
 |---|---|---|
-| Training execution | Durable set/session workflow and canonical-safe metric/imperial load entry | Mid-session movement replacement, supersets/drop sets, reviewed progression/deload rules and device/keyboard/accessibility QA |
+| Training execution | Durable set/session workflow, reviewed mid-session movement replacement and canonical-safe metric/imperial load entry | Supersets/drop sets, reviewed progression/deload rules and device/keyboard/accessibility QA |
 | Individual plans | User-chosen weekly schedule, editable templates, prior versions | Assessment/equipment-driven plan design and reviewed adjustment policy; no AI prescription is claimed |
 | Exercise content | Searchable reusable starter/user entries and notes | Reviewed instruction catalog, equipment/muscle taxonomy, licensed demonstrations/videos, variants and content provenance |
 | Accounts | Tested account/session/recovery API and optional Web UI | Approved live email adapter, deployed same-site HTTPS service, browser/session acceptance, optional social sign-in, operational support |

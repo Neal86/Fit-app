@@ -21,6 +21,7 @@ function App() {
   const [state, setState] = useState<AppState>(loaded.state)
   const latest = useRef(state)
   const savedRaw = useRef(loaded.raw)
+  const stateGeneration = useRef(0)
   const [recovery, setRecovery] = useState(loaded.error)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
@@ -29,6 +30,7 @@ function App() {
       const next = change(latest.current)
       savedRaw.current = saveState(next, savedRaw.current)
       latest.current = next
+      stateGeneration.current += 1
       setState(next)
       setError('')
       if (message) setToast(message)
@@ -46,7 +48,7 @@ function App() {
   return <div className="app-shell"><Sidebar /><main className="main-content">{error && <div className="error-banner" role="alert">{error}</div>}<Routes>
     <Route path="/" element={<Dashboard state={state} />} />
     <Route path="/workouts" element={<Workouts workouts={state.workouts} />} />
-    <Route path="/workouts/:id" element={<WorkoutSession state={state} update={update} />} />
+    <Route path="/workouts/:id" element={<WorkoutSession state={state} update={update} readGeneration={() => stateGeneration.current} />} />
     <Route path="/plan" element={<PlanEditor state={state} update={update} />} />
     <Route path="/schedule" element={<ScheduleBuilder state={state} update={update} />} />
     <Route path="/nutrition" element={<Nutrition state={state.nutrition} onUpdate={change => update(current => ({ ...current, nutrition: change(current.nutrition) }))} />} />

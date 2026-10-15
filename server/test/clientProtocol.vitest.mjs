@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { CloudClient } from '../../src/cloud'
+import { CloudClient, pausedCloudState } from '../../src/cloud'
 import { CoachingClient } from '../../src/coaching'
-import { freshState } from '../../src/storage'
+import { freshState, parseBackup } from '../../src/storage'
+import { finishSession, startSession } from '../../src/session'
+import { applySessionReplacement, reviewSessionReplacement } from '../../src/sessionReplacement'
 import { createApp } from '../app.mjs'
 import { openDatabase } from '../database.mjs'
 
@@ -132,5 +134,61 @@ describe('real coaching client/server protocol with synthetic accounts only', ()
     const f = service(), { client } = await f.registered('local-default@example.test')
     await expect(new CoachingClient(client).overview()).rejects.toMatchObject({ code: 'coaching_disabled', status: 503 })
     expect(f.db.prepare('SELECT COUNT(*) AS count FROM coaching_relationships').get().count).toBe(0)
+  })
+})
+
+
+describe('replacement session preservation through the real sync contract', () => {
+  it('round-trips paused replacement rows and finished movement snapshots without rewriting earlier records', async () => {
+    const f = service(), { client } = await f.registered('replacement@example.test')
+    await client.setConsent(true); await client.inspectSync()
+    const state = freshState(); state.profile.unit = 'imperial'
+    const startedAt = Date.parse('2026-10-15T10:00:00Z')
+    const earlier = startSession(state.workouts[0], startedAt - 86_400_000)
+    earlier.sets[0] = { ...earlier.sets[0], reps: 8, weightKg: 24.123456789, completed: true }
+    state.logs = [finishSession(earlier, startedAt - 86_340_000)]
+    state.planHistory = [{ id: 'synthetic-prior-plan', savedAt: new Date(startedAt).toISOString(), label: 'Synthetic prior plan', workouts: structuredClone(state.workouts) }]
+    state.activeSession = startSession(state.workouts[0], startedAt)
+    state.activeSession.runningSince = null; state.activeSession.elapsedSeconds = 123.5
+    state.activeSession.restUntil = Date.now() + 30_000
+    state.activeSession.sets[0] = { ...state.activeSession.sets[0], reps: 8, weightKg: 31.123456789, rpe: 7.5, warmup: true, completed: true }
+    state.activeSession.sets[1] = { ...state.activeSession.sets[1], reps: 9, weightKg: 32.5, rpe: 8 }
+    const original = structuredClone(state)
+    const sourceId = state.activeSession.workout.exercises[0].id
+    const selected = state.workouts[1].exercises[0]
+    const remaining = state.activeSession.sets.filter(set => set.exerciseId === sourceId && !set.completed)
+    const replaced = applySessionReplacement(state, reviewSessionReplacement(state, sourceId, selected))
+    const movement = replaced.activeSession.workout.exercises.find(exercise => !state.activeSession.workout.exercises.some(previous => previous.id === exercise.id))
+    expect(movement).toBeDefined()
+    const replacementRows = replaced.activeSession.sets.filter(set => set.exerciseId === movement.id)
+    expect(replacementRows).toHaveLength(remaining.length)
+    expect(replacementRows.every(set => !set.completed && !set.warmup && set.reps === null && set.seconds === null && set.weightKg === null && set.rpe === null)).toBe(true)
+    expect(replaced.activeSession.sets.find(set => set.id === original.activeSession.sets[0].id)).toEqual(original.activeSession.sets[0])
+    expect(replaced.workouts).toEqual(original.workouts); expect(replaced.logs).toEqual(original.logs); expect(replaced.planHistory).toEqual(original.planHistory)
+    expect(state).toEqual(original)
+    const expected = pausedCloudState(parseBackup(JSON.stringify(replaced)))
+    await client.upload(replaced, 0, true)
+    const saved = await client.inspectSync()
+    expect(saved.state).toEqual(expected)
+    expect(saved.state.activeSession.runningSince).toBeNull(); expect(saved.state.activeSession.restUntil).toBeNull()
+    expect((await client.exportAccount(PASSWORD)).sync.state).toEqual(expected)
+
+    const restored = parseBackup(JSON.stringify(saved.state))
+    const newSet = restored.activeSession.sets.find(set => set.exerciseId === movement.id)
+    newSet.completed = true; newSet.weightKg = 12.3456789
+    if (/sec/i.test(movement.reps)) newSet.seconds = 20
+    else newSet.reps = 8
+    const completed = finishSession(restored.activeSession, startedAt + 150_000)
+    restored.activeSession = null; restored.logs = [completed, ...restored.logs]
+    await client.upload(restored, saved.revision, true)
+    const final = (await client.inspectSync()).state
+    expect(final).toEqual(restored)
+    expect(final.logs[0].exerciseSnapshots).toContainEqual({ id: sourceId, name: original.activeSession.workout.exercises[0].name, category: original.activeSession.workout.exercises[0].category })
+    expect(final.logs[0].exerciseSnapshots).toContainEqual({ id: movement.id, name: selected.name, category: selected.category })
+    expect(final.logs[1]).toEqual(original.logs[0])
+    expect(final.workouts).toEqual(original.workouts); expect(final.planHistory).toEqual(original.planHistory)
+    const other = (await f.registered('replacement-other@example.test')).client
+    await other.setConsent(true)
+    expect((await other.inspectSync()).state).toBeNull()
   })
 })
