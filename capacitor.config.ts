@@ -4,15 +4,13 @@ const config: CapacitorConfig = {
   appId: 'com.fitflow.app',
   appName: 'FitFlow',
   webDir: 'dist',
-  bundledWebRuntime: false,
-  backgroundColor: '#0f172a',
+  backgroundColor: '#f5f7fb',
   ios: {
     contentInset: 'automatic',
     preferredContentMode: 'mobile',
-    scheme: 'FitFlow',
   },
   android: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#f5f7fb',
     allowMixedContent: false,
     captureInput: true,
   },
@@ -25,7 +23,7 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     StatusBar: {
-      style: 'DARK',
+      style: 'LIGHT',
       backgroundColor: '#f5f7fb',
       overlaysWebView: false,
     },

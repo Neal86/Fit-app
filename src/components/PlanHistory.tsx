@@ -1,0 +1,7 @@
+import type { AppState, Workout } from '../types'
+import type { UpdateState } from './WorkoutSession'
+import { restorePlanRevision } from '../planning'
+import { clearPlanDraft } from '../planDraft'
+export default function PlanHistory({ state, update, onRestore }: { state: AppState; update: UpdateState; onRestore: (workout: Workout) => void }) {
+  return <details className="panel plan-history"><summary>Previous plan versions ({state.planHistory?.length ?? 0})</summary><p>The 20 most recent versions are retained on this device and included in backups. Restoring a plan keeps workout history and your current session.</p>{state.planHistory?.length ? <ol>{state.planHistory.map(revision => <li key={revision.id}><div><strong>{revision.label}</strong><small>{new Date(revision.savedAt).toLocaleString()} · {revision.workouts.length} sessions</small><span>{revision.workouts.map(workout => `${workout.day}: ${workout.title}`).join(' · ')}</span></div><button className="secondary-button" onClick={() => { if (!window.confirm('Restore this plan version? Any unfinished editor draft will be discarded. Your current plan will be kept as a previous version.')) return; if (update(current => restorePlanRevision(current, revision.id), 'Plan version restored')) { clearPlanDraft(); onRestore(revision.workouts[0]) } }}>Restore version</button></li>)}</ol> : <p>Previous versions will appear when you save a changed plan.</p>}</details>
+}

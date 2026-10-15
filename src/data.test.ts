@@ -3,7 +3,7 @@ import { initialState } from './data'
 
 describe('initial application state', () => {
   it('ships a complete and valid starter plan', () => {
-    expect(initialState.version).toBe(2)
+    expect(initialState.version).toBe(4)
     expect(initialState.workouts.length).toBeGreaterThanOrEqual(4)
     expect(initialState.workouts.every((workout) => workout.exercises.length >= 4)).toBe(true)
     expect(initialState.workouts.every((workout) => workout.duration > 0 && workout.calories > 0)).toBe(true)

@@ -1,38 +1,48 @@
-# FitFlow Privacy Policy
+# FitFlow data handling summary
 
-Effective date: August 1, 2026
+Release-review draft, updated 2026-10-15. This describes the source code; it is not a finalized operator privacy notice. The distributing business must finalize its identity, contact, audiences, hosting/processors, retention and legal notice before public release or enabling real-data cloud services.
 
-FitFlow is designed as a local-first fitness application. The app stores profile details, workout records, body-weight entries, preferences, and notes on the user's device.
+## Local data
 
-## Data collected
+The default build works without an account or API. Profile/body measurements, goals, workout plans and previous plan versions, training sets/notes, active sessions, weight entries, manual food/water entries and daily targets, and preferences are stored in this application's local browser/WebView storage. It is not application-layer encrypted. Browser and native installations have separate stores.
 
-FitFlow may store the following information locally on the device:
+Unfinished plan and nutrition edits use sessionStorage for recovery within the current tab. They are not part of saved backups. Successful import/reset/cloud restoration clears these drafts; cleanup failures are reported. Closing a tab, clearing storage or uninstalling can remove local records. Verify a private backup before uninstalling or clearing app storage.
 
-- Name or display name
-- Height, weight, fitness goal, and experience level
-- Workout completion history, duration, estimated calories, and notes
-- Application preferences
+There is no analytics SDK, ad SDK, external font request, food-database lookup, AI-model request, camera capture or wearable integration in this build.
 
-## Data sharing
+## Optional cloud account and manual transfers
 
-FitFlow does not transmit, sell, rent, or share personal data with advertisers or third parties in the delivered local-first edition.
+Cloud accounts are disabled unless a build-time API URL is explicitly configured. The account page shows the exact recipient. No request runs merely by visiting that page. Native cloud accounts are currently unsupported; native local training, nutrition and backup features remain available.
 
-## Device permissions
+When an enabled web service is used:
+- Account actions send the email and submitted password or verification/reset token to the configured service over its approved transport
+- Passwords are salted and hashed on the server; session/email tokens are stored as hashes. Browser sessions use HttpOnly cookies; CSRF/session metadata stays in memory, not localStorage or sessionStorage
+- Registration and recovery require an implemented, approved email adapter. The supplied executable deliberately has no live email provider and returns an unavailable error rather than inventing email delivery
+- Cloud fitness access requires explicit recipient-specific consent. Each upload or device restore then requires a separate manual review and confirmation
+- A full fitness snapshot includes profile/body measurements, training/notes and prior plan versions, weight history, nutrition/targets, preferences and the paused active session. Records can reveal sensitive health information
+- There is no background sync, third-party AI analysis or automatic health-data transmission
+- Conflicts require another inspection and choice; local and cloud records are not automatically merged
 
-The application may use network-state access to show connectivity status and haptic feedback for interaction confirmation. It does not request camera, microphone, precise location, contacts, photos, or health-record access.
+The SQLite server stores the current snapshot. File access restrictions are not encryption. Real-data hosting requires separately approved processors, encrypted storage/backups, controlled access, retention and recovery arrangements. Those services are not configured by this source change.
 
-## Data retention and deletion
+## Optional coach collaboration
 
-Data remains on the device until the user deletes it, resets the application, clears browser/application storage, or uninstalls the app. Users can export a JSON backup or reset all stored information from Profile & Settings.
+The separate coaching service is disabled by default. A signed-in user must manually request its availability. An invitation identifies one known account email; it sends no health snapshot and does not claim the person is a qualified coach. The recipient must explicitly accept. Every new accepted relationship starts with no health-data access.
 
-## Health disclaimer
+The athlete then reviews the exact accepted account identity and explicitly chooses training, body measurements and/or nutrition categories. This is ongoing permission for the selected categories in current and future saved cloud snapshots until revoked. Training includes private workout/exercise notes and saved plan versions; body includes height/weight and the weight diary; nutrition includes manual food/water records, notes and targets. Full profile identity, birth year, preferences and active/live sessions are never included in a coach projection. The coach sees only manual reads of already-uploaded snapshots, not unsaved device changes.
 
-FitFlow is a general fitness planning tool and is not a medical device. Estimated calorie values and BMI are informational estimates and are not medical advice, diagnosis, or treatment.
+Permission and account verification are checked server-side on every read/write. Either accepted party may end a relationship; revocation stops future permitted reads. Revoking cloud-health consent also clears every coach category grant; re-enabling cloud consent never re-enables those grants. These controls cannot recall previously read, copied or exported data. Operators still need approved recipient/category consent text, retention and abuse-response policies before enabling real sharing.
 
-## Children's privacy
+Training-scoped coaches may submit bounded plain-text feedback, with a separate review before each submission. Feedback is not automated advice and professional qualifications are not verified. The athlete can read or remove their received feedback after revocation. No public directory, community feed, attached media, automatic invitations, model provider, or clinical moderation service is implemented.
 
-FitFlow is not intended for children under 13.
+## Export, revocation and deletion
 
-## Contact
+Local JSON backups and password-confirmed cloud account exports contain private records; keep them in a private location. A cloud export excludes unsynced local changes and another athlete’s snapshot. It includes the caller’s coaching relationships, incoming invitations and currently permitted authored/received feedback; removed feedback text is excluded. Exported copies are controlled separately by whoever saves them.
 
-The distributing business must replace this section with its legal business name, support email, and mailing address before public store submission.
+Local reset removes the saved device dataset after confirmation. Cloud consent revocation removes the server fitness snapshot and sync operation metadata and clears coach category grants. Password-confirmed cloud account deletion removes that account, its sessions, email tokens, consent, snapshot and associated coaching relationships/invitations/feedback on both sides. Both actions preserve local device data. Deletion from the running database does not establish deletion of operator backups or previously exported files; a final deployment must define and verify that retention process.
+
+## Device capabilities and release review
+
+Native source includes network connectivity/status, haptics, splash/status-bar and keyboard behavior. The owner approved the Android manifest’s INTERNET permission. This does not add camera, location or health-platform access, and native cloud transport is still unsupported. No camera, microphone, precise location, contacts, photos, Apple Health or Health Connect integration is implemented.
+
+Fitness/calorie information is not diagnosis or treatment, and manual nutrition targets are not prescribed by the app. Audience/age requirements, final business contact information, support channels and store disclosures remain operator release decisions. Do not publish this draft as a completed compliance claim.
