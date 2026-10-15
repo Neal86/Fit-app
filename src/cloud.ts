@@ -2,6 +2,7 @@ import { MAX_BACKUP_BYTES, parseBackup } from './storage'
 import { elapsedSeconds } from './session'
 import type { AppState } from './types'
 import type { CoachingAccountExport } from './coaching'
+import type { ChallengeAccountExport } from './privateChallenges'
 import { Capacitor } from '@capacitor/core'
 
 export const HEALTH_SYNC_POLICY = '2026-10-15'
@@ -9,7 +10,7 @@ export type CloudUser = { id: string; email: string; emailVerified: boolean; cre
 export type CloudSession = { user: CloudUser; csrfToken: string; sessionExpiresAt: string }
 export type CloudConsent = { healthSync: boolean; policyVersion: typeof HEALTH_SYNC_POLICY; updatedAt: string | null }
 export type CloudSnapshot = { revision: number; state: AppState | null; updatedAt: string | null }
-export type AccountExport = { format: 'fitflow-account-export'; version: 1; exportedAt: string; user: CloudUser; consent: CloudConsent; sync: CloudSnapshot; coaching?: CoachingAccountExport }
+export type AccountExport = { format: 'fitflow-account-export'; version: 1; exportedAt: string; user: CloudUser; consent: CloudConsent; sync: CloudSnapshot; coaching?: CoachingAccountExport; challenges?: ChallengeAccountExport }
 export class CloudError extends Error {
   constructor(public code: string, message: string, public status = 0, public revision?: number) { super(message); this.name = 'CloudError' }
 }
@@ -222,6 +223,22 @@ export class CloudClient {
     this.assertGeneration(generation, true)
     return value
   }
+  /** Narrow count-only private challenge transport. Payloads are validated by privateChallenges.ts. */
+  async challengeRequest(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', body?: unknown, expectedStatus = 200): Promise<unknown> {
+    const id = '[A-Za-z0-9][A-Za-z0-9_-]{0,127}'
+    const allowed: Record<string, RegExp> = {
+      GET: new RegExp(`^challenges(?:/${id}/counts)?$`),
+      POST: new RegExp(`^challenges/(?:invitations(?:/${id}/accept)?|${id}/block)$`),
+      PUT: new RegExp(`^challenges/${id}/consent$`),
+      DELETE: new RegExp(`^challenges/(?:invitations/${id}|${id}(?:/consent)?)$`),
+    }
+    if (!allowed[method]?.test(path) || ![200, 202, 204].includes(expectedStatus)) throw new CloudError('invalid_request', 'This private challenge action is not supported.')
+    this.requireSession(true)
+    const generation = this.generation
+    const value = await this.request(path, method, body, true, expectedStatus, 256 * 1024)
+    this.assertGeneration(generation, true)
+    return value
+  }
   async getConsent(): Promise<CloudConsent> {
     this.requireSession(true)
     const generation = this.generation
@@ -292,7 +309,14 @@ export class CloudClient {
       this.assertGeneration(generation, true)
       coaching = readCoachingAccountExport(value.coaching, id)
     }
-    return { format: 'fitflow-account-export', version: 1, exportedAt: value.exportedAt, user, consent, sync, ...(coaching ? { coaching } : {}) }
+    let challenges: ChallengeAccountExport | undefined
+    if (value.challenges !== undefined) {
+      const { readChallengeAccountExport } = await import('./privateChallenges')
+      this.assertGeneration(generation, true)
+      challenges = readChallengeAccountExport(value.challenges)
+    }
+    this.assertGeneration(generation, true)
+    return { format: 'fitflow-account-export', version: 1, exportedAt: value.exportedAt, user, consent, sync, ...(coaching ? { coaching } : {}), ...(challenges ? { challenges } : {}) }
   }
   async deleteAccount(password: string, confirmation: string): Promise<void> {
     if (confirmation !== 'DELETE') throw new CloudError('confirmation_required', 'Type DELETE to confirm permanent cloud-account deletion.')

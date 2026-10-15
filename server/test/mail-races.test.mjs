@@ -183,7 +183,7 @@ test('v1 security migration invalidates unbound tokens and requires fresh unveri
   legacy.prepare('INSERT INTO email_tokens(token_hash,user_id,purpose,expires_at,ready,password_hash) VALUES(?,?,?,?,1,?)').run(digest('synthetic-token'), 'synthetic-user', 'verify', Date.now() + 100000, PASSWORD_HASH)
   legacy.close()
   const db = openDatabase(path); t.after(() => db.close())
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 4)
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5)
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM email_tokens').get().count, 0)
   const migrated = db.prepare("SELECT * FROM users WHERE id = 'synthetic-user'").get()
   assert.equal(migrated.pending_password_hash, null)

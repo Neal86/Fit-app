@@ -6,6 +6,7 @@ import { pruneExpired, rateLimit, transaction } from './database.mjs'
 import { disabledMailAdapter } from './mail.mjs'
 import { MAX_STATE_BYTES, validateState } from './state.mjs'
 import { createCoaching, revokeAthleteCoachingConsent } from './coaching.mjs'
+import { createChallenges, revokeAccountChallengeConsent } from './challenges.mjs'
 
 const PREFIX = '/api/v1'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i
@@ -18,6 +19,7 @@ const syncView = user => ({ revision: user.revision, state: user.state_json ? JS
 export function createApp({ db, config, mail = disabledMailAdapter, now = Date.now }) {
   config = validateConfig(config)
   const coaching = createCoaching({ db, now })
+  const challenges = createChallenges({ db, now })
   const cookieName = config.secureCookies ? '__Host-fitflow_session' : 'fitflow_session'
   const cookie = (value, age) => `${cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${config.secureCookies ? '; Secure' : ''}`
   let lastPrune = -Infinity
@@ -174,6 +176,7 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
     let user = session.user
     if (!(method === 'GET' && authPath === '/auth/session')) csrf(headers, session)
     if (method === 'GET' && authPath === '/auth/session') return { status: 200, body: { user: userView(user), csrfToken: csrfFor(session.raw), sessionExpiresAt: iso(session.session.expires_at) } }
+    if (authPath === '/challenges' || authPath.startsWith('/challenges/')) return challenges(method, authPath, body, user.id)
     if (authPath === '/coaching' || authPath.startsWith('/coaching/')) return coaching(method, authPath, body, user.id)
     if (method === 'POST' && authPath === '/auth/logout') {
       fields(body, [])
@@ -191,6 +194,7 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
           db.prepare('UPDATE users SET state_json = NULL, state_at = ?, revision = revision + 1 WHERE id = ?').run(now(), user.id)
           db.prepare('DELETE FROM sync_operations WHERE user_id = ?').run(user.id)
           revokeAthleteCoachingConsent(db, user.id, now())
+          revokeAccountChallengeConsent(db, user.id, now())
         }
       })
       return { status: 200, body: consentView(userById(user.id)) }
@@ -224,7 +228,7 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
       fields(body, ['password'])
       await reauth(headers, body.password, user)
       user = auth(headers, false).user
-      return { status: 200, body: { format: 'fitflow-account-export', version: 1, exportedAt: iso(now()), user: userView(user), consent: consentView(user), sync: syncView(user), coaching: coaching.exportAccount(user.id) } }
+      return { status: 200, body: { format: 'fitflow-account-export', version: 1, exportedAt: iso(now()), user: userView(user), consent: consentView(user), sync: syncView(user), coaching: coaching.exportAccount(user.id), challenges: challenges.exportAccount(user.id) } }
     }
     if (method === 'DELETE' && authPath === '/account') {
       fields(body, ['password', 'confirmation'])
@@ -246,6 +250,7 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
         if (now() - lastPrune >= 60000) { pruneExpired(db, now()); lastPrune = now() }
         if (headers.origin && headers.origin !== config.origin || headers['sec-fetch-site'] === 'cross-site') fail(403, 'origin_forbidden', 'This request origin is not allowed.')
         if (headers.origin === config.origin) Object.assign(responseHeaders, { 'access-control-allow-origin': config.origin, 'access-control-allow-credentials': 'true' })
+        if ((path === `${PREFIX}/challenges` || path.startsWith(`${PREFIX}/challenges/`)) && !config.challengesEnabled) fail(503, 'challenges_disabled', 'Private challenges are disabled.')
         if ((path === `${PREFIX}/coaching` || path.startsWith(`${PREFIX}/coaching/`)) && !config.coachingEnabled) fail(503, 'coaching_disabled', 'Coach collaboration is disabled.')
         if (method === 'OPTIONS') {
           if (headers.origin !== config.origin || !['GET', 'POST', 'PUT', 'DELETE'].includes(headers['access-control-request-method'])) fail(403, 'origin_forbidden', 'This request origin is not allowed.')

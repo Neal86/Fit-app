@@ -279,3 +279,59 @@ it('does not download an account export after a consumer-boundary session invali
   await act(async () => { await Promise.resolve(); await Promise.resolve() })
   expect(download).not.toHaveBeenCalled()
 })
+
+const privateChallenge = () => ({ id: 'challenge-1', role: 'inviter', counterpart: { id: 'peer', email: 'peer@example.test' }, startDate: '2099-10-15', endDate: '2099-10-21', status: 'active', version: 2, ownConsent: true, peerConsent: true, policyVersion: HEALTH_SYNC_POLICY, createdAt: stamp, acceptedAt: stamp, expiresAt: '2099-10-29T00:00:00.000Z', revokedAt: null })
+const privateOverview = () => ({ policyVersion: HEALTH_SYNC_POLICY, metric: 'recorded_training_days', invitations: [], challenges: [privateChallenge()] })
+const privateCounts = () => ({ challengeId: 'challenge-1', challengeVersion: 2, metric: 'recorded_training_days', selfReported: true, ownRecordedDays: 4, peerRecordedDays: 3 })
+
+it('keeps private challenge controls collapsed and request-free after account login', async () => {
+  const { fetcher } = setup(json(auth)); await login()
+  expect(screen.getByRole('button', { name: 'Open private challenge controls' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Check private challenge availability' })).not.toBeInTheDocument()
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+it.each([401, 403])('clears Account and Coaching private views when a challenge request invalidates the shared session (%s)', async status => {
+  const relationship = { id: 'relation-1', role: 'athlete', counterpart: { id: 'coach', email: 'coach@example.test' }, status: 'active', version: 1, scopes: [], policyVersion: null, consentUpdatedAt: null, createdAt: stamp, acceptedAt: stamp, revokedAt: null }
+  const coachingOverview = { policyVersion: HEALTH_SYNC_POLICY, coachQualificationsVerified: false, invitations: [], relationships: [relationship] }
+  const feedback = { relationshipId: 'relation-1', relationshipVersion: 1, feedback: [{ id: 'feedback-1', text: 'Synthetic private coaching feedback', format: 'plain_text', createdAt: stamp }] }
+  const { fetcher } = setup(json(auth), json(consent()), json(consent()), json(snapshot()), json(coachingOverview), json(feedback), json({ error: { code: status === 401 ? 'unauthenticated' : 'csrf_failed' } }, status))
+  await login(); await checkAndInspect()
+  fireEvent.click(screen.getByRole('button', { name: 'Check collaboration availability' })); await screen.findByRole('heading', { name: 'Accepted relationships' })
+  fireEvent.click(screen.getByRole('button', { name: 'Read feedback' })); await screen.findByText('Synthetic private coaching feedback')
+  fireEvent.click(screen.getByRole('button', { name: 'Review restore' }))
+  fireEvent.change(screen.getByLabelText('Confirm account password'), { target: { value: 'synthetic-private-password' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Open private challenge controls' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Check private challenge availability' }))
+  await screen.findByRole('button', { name: 'Sign in securely' })
+  expect(screen.queryByText('Synthetic private coaching feedback')).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Confirm device replacement' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/Cloud revision 2/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Accepted private challenges' })).not.toBeInTheDocument()
+  expect(fetcher).toHaveBeenCalledTimes(7)
+})
+
+it('invalidates a pending private count read before cloud-consent revocation and never revives it', async () => {
+  const { fetcher } = setup(json(auth), json(consent()), json(privateOverview()))
+  await login(); fireEvent.click(screen.getByRole('button', { name: 'Check cloud consent' })); await screen.findByRole('button', { name: 'Inspect cloud copy' })
+  fireEvent.click(screen.getByRole('button', { name: 'Open private challenge controls' })); fireEvent.click(screen.getByRole('button', { name: 'Check private challenge availability' })); await screen.findByRole('heading', { name: 'Accepted private challenges' })
+  let releaseCounts!: (response: Response) => void
+  let releaseRevoke!: (response: Response) => void
+  fetcher.mockImplementationOnce(() => new Promise(resolve => { releaseCounts = resolve }))
+  fireEvent.click(screen.getByRole('button', { name: 'Read private training-day counts' }))
+  fetcher.mockImplementationOnce(() => new Promise(resolve => { releaseRevoke = resolve }))
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke consent & delete cloud copy' })); fireEvent.click(screen.getByRole('button', { name: 'Confirm revoke and delete' }))
+  expect(screen.queryByRole('heading', { name: 'Accepted private challenges' })).not.toBeInTheDocument()
+  await act(async () => releaseCounts(json(privateCounts())))
+  expect(screen.queryByRole('region', { name: 'Displayed private counts' })).not.toBeInTheDocument()
+  await act(async () => releaseRevoke(json(consent(false))))
+  expect(await screen.findByText('Cloud consent revoked and the server snapshot deleted. Your device data is unchanged.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Open private challenge controls' })).toBeInTheDocument()
+  expect(screen.queryByText('4 days')).not.toBeInTheDocument(); expect(fetcher).toHaveBeenCalledTimes(5)
+})
+
+it('discloses effects of a manual cloud upload on separately consented private challenge counts', async () => {
+  setup(json(auth), json(consent()), json(consent()), json(snapshot()))
+  await login(); await checkAndInspect(); fireEvent.click(screen.getByRole('button', { name: 'Review upload' }))
+  expect(screen.getByRole('region', { name: 'Confirm health-data upload' })).toHaveTextContent('Private challenge partners with both current grants can read updated training-day counts for the reviewed UTC windows')
+})

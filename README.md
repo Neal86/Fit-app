@@ -23,6 +23,7 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 - Optional web account/consent/manual cloud-sync UI, disabled without explicit configuration
 - Tested account/session/reset/verification API, isolated SQLite storage, CAS/idempotent sync and password-confirmed export/deletion
 - Optional default-off coach collaboration: accepted identities, explicitly scoped saved-cloud access, revocation and reviewed plain-text feedback
+- Optional default-off private consistency challenges: two accepted accounts, separate exact-window grants and count-only self-recorded training days from manual cloud copies
 - Correct BMI calculation from saved height and weight
 - Version 2/3 to 4 migration, strict shared local/cloud validation, stale-tab overwrite protection and non-destructive corrupt-data recovery
 - JSON backup export and import
@@ -40,6 +41,8 @@ See [measurement preferences](docs/MEASUREMENT_UNITS.md) for entry behavior, can
 See [session exercise replacement](docs/SESSION_REPLACEMENT.md) for exactly what changes, what remains intact and stale-review safeguards.
 
 Coach collaboration requires separate service activation and explicit recipient/category consent. It is not professional verification or a live coaching service. See [backend contract](server/COACHING.md), [UI integration](docs/COACHING_UI.md) and [data handling](PRIVACY.md).
+
+Private challenges require separate service activation and both participants' explicit consent to one another, a fixed UTC window and the count-only field. They have no public feed, prizes or verified exercise claims. See [challenge contract](server/CHALLENGES.md) and [private view behavior](docs/PRIVATE_CHALLENGES_UI.md).
 
 ## Install and run the Web application
 

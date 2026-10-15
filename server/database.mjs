@@ -14,7 +14,7 @@ export function openDatabase(path = ':memory:') {
     transaction(db, () => {
       // Read under the write lock: concurrent startup must not apply an old migration twice.
       const version = db.prepare('PRAGMA user_version').get().user_version
-      if (version > 4) throw new Error('Database schema is newer than this server.')
+      if (version > 5) throw new Error('Database schema is newer than this server.')
       db.exec(`
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
@@ -104,7 +104,44 @@ export function openDatabase(path = ':memory:') {
             SELECT 1, MIN(COUNT(*), 10000) FROM coaching_relationships;
         `)
       }
-      db.exec('PRAGMA user_version = 4')
+      // Additive v4 -> v5: independent private challenge rows, no existing grants widen.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS private_challenges (
+          id TEXT PRIMARY KEY,
+          inviter_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          invitee_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          status TEXT NOT NULL CHECK(status IN ('pending','active','revoked','declined','expired')),
+          version INTEGER NOT NULL DEFAULT 1 CHECK(version BETWEEN 1 AND 9007199254740991),
+          start_date TEXT NOT NULL, end_date TEXT NOT NULL,
+          inviter_consent INTEGER NOT NULL DEFAULT 0 CHECK(inviter_consent IN (0,1)),
+          invitee_consent INTEGER NOT NULL DEFAULT 0 CHECK(invitee_consent IN (0,1)),
+          inviter_policy TEXT, invitee_policy TEXT,
+          inviter_consent_at INTEGER, invitee_consent_at INTEGER,
+          created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, accepted_at INTEGER, revoked_at INTEGER,
+          CHECK(inviter_id <> invitee_id)
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS challenges_inviter ON private_challenges(inviter_id);
+        CREATE INDEX IF NOT EXISTS challenges_invitee ON private_challenges(invitee_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS challenges_open_pair ON private_challenges(MIN(inviter_id,invitee_id),MAX(inviter_id,invitee_id))
+          WHERE status IN ('pending','active');
+        CREATE TABLE IF NOT EXISTS challenge_blocks (
+          owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          target_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at INTEGER NOT NULL,
+          PRIMARY KEY(owner_id,target_id), CHECK(owner_id <> target_id)
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS challenge_blocks_target ON challenge_blocks(target_id);
+        CREATE TABLE IF NOT EXISTS challenge_invitation_budgets (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          attempts INTEGER NOT NULL CHECK(attempts BETWEEN 0 AND 50)
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS challenge_global_budget (
+          id INTEGER PRIMARY KEY CHECK(id = 1),
+          attempts INTEGER NOT NULL CHECK(attempts BETWEEN 0 AND 10000)
+        ) STRICT;
+        INSERT OR IGNORE INTO challenge_global_budget(id,attempts) VALUES(1,0);
+        PRAGMA user_version = 5;
+      `)
     })
   } catch (error) { db.close(); throw error }
   return db
