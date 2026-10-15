@@ -21,4 +21,20 @@ describe('reusable exercise entries', () => {
     expect(filterCatalog(catalog, 'SHOULDER BLADES', '')[0].exercise.name).toBe('Bench Press')
     expect(filterCatalog(catalog, 'bench', 'Back')).toEqual([])
   })
+  it('keeps unknown, no equipment and different requirements as distinct entries', () => {
+    const workout = freshState().workouts[0]; const exercise = workout.exercises[0]
+    workout.exercises = [exercise, { ...exercise, id: 'none', equipment: [] }, { ...exercise, id: 'bench-only', equipment: ['bench'] }, { ...exercise, id: 'barbell-only', equipment: ['barbell'] }]
+    const matching = filterCatalog(exerciseCatalog([workout]), exercise.name, exercise.category)
+    expect(matching).toHaveLength(4)
+    expect(new Set(matching.map(item => item.key)).size).toBe(4)
+  })
+  it('canonicalizes equipment order only for deduplication and deep clones selected requirements', () => {
+    const workout = freshState().workouts[0]; const exercise = workout.exercises[0]
+    workout.exercises = [{ ...exercise, equipment: ['bench', 'barbell'] }, { ...exercise, id: 'same-requirements', equipment: ['barbell', 'bench'] }]
+    const matching = filterCatalog(exerciseCatalog([workout]), exercise.name, exercise.category)
+    expect(matching).toHaveLength(2) // One supplied variant and the unclassified starter entry.
+    expect(matching.find(item => item.source === 'Your plan')!.exercise.equipment).toEqual(['bench', 'barbell'])
+    matching.find(item => item.source === 'Your plan')!.exercise.equipment!.push('weight-plates')
+    expect(workout.exercises[0].equipment).toEqual(['bench', 'barbell'])
+  })
 })

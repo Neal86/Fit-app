@@ -46,7 +46,7 @@ A disabled mail adapter or unavailable backend (503) reports the failure honestl
 
 ## Consent and conflict behavior
 
-The consent checkbox names the configured recipient and health categories: training plans/history, profile/weight, nutrition, preferences, and active session. Enabling consent sends only the consent decision. Each transfer is manual:
+The consent checkbox names the configured recipient and health categories: training plans/history with saved equipment requirements, profile/weight, nutrition, preferences, and active session. Temporary available-equipment filter choices are not part of AppState and are not transferred. Equipment metadata is included in the owner's full snapshot/export but deliberately omitted by existing coach projection allowlists. Enabling consent sends only the consent decision. Each transfer is manual:
 
 1. Explicitly check/enable consent and inspect the latest cloud snapshot
 2. Review a frozen, validated device snapshot for upload, or review the cloud snapshot for restore

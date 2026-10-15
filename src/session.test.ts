@@ -12,6 +12,20 @@ describe('durable workout sessions', () => {
     workout.title = 'Edited later'
     expect(session.workout.title).not.toBe('Edited later')
   })
+  it('takes a deep equipment snapshot without changing set rows, logged values or past logs', () => {
+    const workout = freshState().workouts[0]; workout.exercises[0].equipment = ['barbell', 'bench']
+    const session = startSession(workout, start)
+    const setRows = structuredClone(session.sets)
+    workout.exercises[0].equipment.push('weight-plates')
+    expect(session.workout.exercises[0].equipment).toEqual(['barbell', 'bench'])
+    expect(session.sets).toEqual(setRows)
+    session.sets[0] = { ...session.sets[0], completed: true, reps: 8, weightKg: 22.123456789 }
+    const log = finishSession(session, start + 60_000); const historical = structuredClone(log)
+    session.workout.exercises[0].equipment!.push('dumbbells')
+    expect(log).toEqual(historical)
+    expect(log.sets![0].weightKg).toBe(22.123456789)
+    expect(log.exerciseSnapshots!.every(exercise => !Object.hasOwn(exercise, 'equipment'))).toBe(true)
+  })
   it('uses wall-clock elapsed time across background throttling', () => {
     const session = startSession(freshState().workouts[0], start)
     expect(elapsedSeconds(session, start + 123000)).toBe(123)

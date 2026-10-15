@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { freshState, loadState, parseBackup, parseState, saveState, STORAGE_KEY } from './storage'
 import { finishSession, startSession } from './session'
+import { pausedCloudState } from './cloud'
 
 beforeEach(() => { localStorage.clear(); vi.restoreAllMocks() })
 describe('validated local persistence and backup migration', () => {
@@ -22,6 +23,33 @@ describe('validated local persistence and backup migration', () => {
     const state = freshState(); state.activeSession = startSession(state.workouts[0])
     saveState(state)
     expect(loadState().state).toEqual(state)
+  })
+  it('preserves optional equipment through reload, JSON backup and private paused-cloud copies', () => {
+    const state = freshState()
+    state.workouts[0].exercises[0].equipment = ['barbell', 'weight-plates', 'bench']
+    state.workouts[0].exercises[1].equipment = []
+    state.activeSession = startSession(state.workouts[0], Date.parse('2026-10-01T10:00:00Z'))
+    state.activeSession.runningSince = null; state.activeSession.elapsedSeconds = 30
+    state.planHistory = [{ id: 'plan-1', label: 'Before equipment edits', savedAt: '2026-10-01T10:00:00Z', workouts: structuredClone(state.workouts) }]
+    const completed = startSession(state.workouts[0], Date.parse('2026-09-30T10:00:00Z')); completed.sets[0].completed = true
+    state.logs = [finishSession(completed, Date.parse('2026-09-30T10:10:00Z'))]
+    const original = structuredClone(state)
+    saveState(state)
+    expect(loadState().state).toEqual(original)
+    expect(parseBackup(JSON.stringify(state))).toEqual(original)
+    expect(parseBackup(JSON.stringify(pausedCloudState(state)))).toEqual(original)
+    expect(Object.hasOwn(loadState().state.workouts[0].exercises[2], 'equipment')).toBe(false)
+    expect(state).toEqual(original)
+  })
+  it('rejects malformed equipment before any local replacement and preserves corrupted stored bytes', () => {
+    const state = freshState(); const originalRaw = saveState(state)
+    const invalid = structuredClone(state); Object.assign(invalid.workouts[0].exercises[0], { equipment: ['bench', 'bench'] })
+    expect(() => saveState(invalid)).toThrow()
+    expect(() => parseBackup(JSON.stringify(invalid))).toThrow()
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(originalRaw)
+    const corruptedRaw = JSON.stringify(invalid); localStorage.setItem(STORAGE_KEY, corruptedRaw)
+    expect(loadState()).toMatchObject({ raw: corruptedRaw, error: expect.stringContaining('invalid') })
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(corruptedRaw)
   })
   it.each([
     ['unsupported version', { ...freshState(), version: 99 }],

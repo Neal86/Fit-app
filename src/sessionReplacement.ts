@@ -11,6 +11,11 @@ export type SessionReplacementReview = Readonly<{
 }>
 const sources = new WeakMap<SessionReplacementReview, { session: ActiveSession; snapshot: string }>()
 const stale = () => new Error('This session changed. Cancel and review the replacement again.')
+function freezeExercise(exercise: Exercise): Readonly<Exercise> {
+  const snapshot = structuredClone(exercise)
+  if (snapshot.equipment !== undefined) Object.freeze(snapshot.equipment)
+  return Object.freeze(snapshot)
+}
 
 export function reviewSessionReplacement(state: AppState, sourceExerciseId: string, selected: Exercise): SessionReplacementReview {
   parseState(state)
@@ -26,7 +31,7 @@ export function reviewSessionReplacement(state: AppState, sourceExerciseId: stri
   // Validate the selected entry against the unchanged shared schema, including its 1–20 planned sets.
   parseState({ ...state, workouts: [{ ...session.workout, exercises: [selected] }] })
   const review = Object.freeze({
-    source: Object.freeze(structuredClone(source)), replacement: Object.freeze(structuredClone(selected)),
+    source: freezeExercise(source), replacement: freezeExercise(selected),
     removedSets: Object.freeze(removedSets.map(set => Object.freeze(structuredClone(set)))), completedCount,
   })
   sources.set(review, { session, snapshot: JSON.stringify(session) })

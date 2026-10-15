@@ -1,8 +1,9 @@
 import type { NutritionState } from './nutrition.js'
+import type { EquipmentId } from './equipment.js'
 export type Goal = 'Build muscle' | 'Lose fat' | 'Improve endurance' | 'Stay active'
 export type Level = 'Beginner' | 'Intermediate' | 'Advanced'
 export type Exercise = {
-  id: string; name: string; sets: number; reps: string; restSeconds: number; category: string; notes?: string
+  id: string; name: string; sets: number; reps: string; restSeconds: number; category: string; notes?: string; equipment?: EquipmentId[]
 }
 export type Workout = {
   id: string; title: string; day: string; duration: number; calories: number; difficulty: Level; description: string; exercises: Exercise[]

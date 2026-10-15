@@ -23,6 +23,7 @@ export function schedulePreview(workouts: Workout[], choices: ScheduleChoice[], 
     if (workout.duration > maximumMinutes) throw new Error(`${workout.title} exceeds your session time limit. Edit it or choose a shorter session.`)
     // Preserve identity on the first occurrence, use new identities when copying a template to another day.
     const duplicate = choices.findIndex(item => item.workoutId === choice.workoutId) !== choices.indexOf(choice)
-    return { ...structuredClone(workout), day: choice.day, ...(duplicate ? { id: uid(), exercises: workout.exercises.map(exercise => ({ ...exercise, id: uid() })) } : {}) }
+    const snapshot = structuredClone(workout)
+    return { ...snapshot, day: choice.day, ...(duplicate ? { id: uid(), exercises: snapshot.exercises.map(exercise => ({ ...exercise, id: uid() })) } : {}) }
   }).sort((a, b) => (weekdays as readonly string[]).indexOf(a.day) - (weekdays as readonly string[]).indexOf(b.day))
 }

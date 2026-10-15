@@ -192,3 +192,61 @@ describe('replacement session preservation through the real sync contract', () =
     expect((await other.inspectSync()).state).toBeNull()
   })
 })
+
+describe('equipment metadata through the real account and scoped-sharing contract', () => {
+  it('preserves explicit none/unknown/listed requirements in own snapshots without expanding coach access', async () => {
+    const f = service({ coachingEnabled: true })
+    const athlete = (await f.registered('equipment-athlete@example.test')).client
+    const coach = (await f.registered('equipment-coach@example.test')).client
+    await athlete.setConsent(true); await athlete.inspectSync()
+    const state = freshState()
+    state.workouts[0].exercises[0].equipment = []
+    state.workouts[0].exercises[2].equipment = ['dumbbells', 'bench']
+    const startedAt = Date.parse('2026-10-15T10:00:00Z')
+    const earlier = startSession(state.workouts[0], startedAt - 86_400_000)
+    earlier.sets[0] = { ...earlier.sets[0], completed: true, reps: 8 }
+    state.logs = [finishSession(earlier, startedAt - 86_340_000)]
+    state.planHistory = [{ id: 'equipment-prior-plan', savedAt: new Date(startedAt).toISOString(), label: 'Synthetic equipment revision', workouts: structuredClone(state.workouts) }]
+    state.activeSession = startSession(state.workouts[0], startedAt)
+    state.activeSession.runningSince = null; state.activeSession.elapsedSeconds = 60
+    const originalLogs = structuredClone(state.logs)
+    // Changing a future plan never relabels an active session or earlier plan.
+    state.workouts[0].exercises[0].equipment = ['barbell', 'weight-plates']
+    const expected = pausedCloudState(parseBackup(JSON.stringify(state)))
+    expect(expected.activeSession.workout.exercises[0].equipment).toEqual([])
+    expect(expected.planHistory[0].workouts[0].exercises[0].equipment).toEqual([])
+    expect(expected.workouts[0].exercises[1]).not.toHaveProperty('equipment')
+    expect(expected.logs).toEqual(originalLogs)
+    expect(expected.logs[0].exerciseSnapshots.every(item => !('equipment' in item))).toBe(true)
+    await athlete.upload(state, 0, true)
+    const saved = await athlete.inspectSync()
+    expect(saved.state).toEqual(expected)
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toEqual(expected)
+    expect(parseBackup(JSON.stringify(saved.state))).toEqual(expected)
+
+    const a = new CoachingClient(athlete), c = new CoachingClient(coach)
+    await a.invite(coach.session.user.email, true)
+    await c.accept((await c.overview()).invitations[0], true)
+    await a.consent((await a.overview()).relationships[0], ['training'], true)
+    const reviewedRelationship = (await c.overview()).relationships[0]
+    const projected = await c.snapshot(reviewedRelationship)
+    const training = projected.categories.training
+    expect(training.workouts[0].exercises[0]).not.toHaveProperty('equipment')
+    expect(training.workouts[0].exercises[2]).not.toHaveProperty('equipment')
+    expect(training.planHistory[0].workouts[0].exercises[0]).not.toHaveProperty('equipment')
+    expect(training.logs).toEqual(originalLogs)
+    expect(JSON.stringify(projected)).not.toContain('"equipment":')
+    expect((await coach.exportAccount(PASSWORD)).sync.state).toBeNull()
+
+    const invalid = structuredClone(state)
+    invalid.workouts[0].exercises[0].equipment = ['unsupported-equipment']
+    await expect(athlete.upload(invalid, saved.revision, true)).rejects.toThrow()
+    expect((await athlete.inspectSync()).state).toEqual(expected)
+    await athlete.setConsent(false)
+    await expect(c.snapshot(reviewedRelationship)).rejects.toMatchObject({ code: 'sharing_unavailable' })
+    const revoked = (await c.overview()).relationships[0]
+    expect(revoked.scopes).toEqual([])
+    await expect(c.snapshot(revoked)).rejects.toMatchObject({ code: 'coaching_conflict' })
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toBeNull()
+  })
+})

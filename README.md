@@ -18,6 +18,7 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 - Date-filtered/searchable workout history, activity calendar and recorded working-set load summaries
 - Dated body-weight entries and trends; backdated corrections do not replace the latest profile weight
 - Reusable exercise entries from saved plans and starter templates, with category/search filters
+- Explicit exercise equipment requirements, temporary available-equipment checks and optional all-required library/schedule filtering, with unknown kept distinct from no equipment
 - Reviewed weekly schedule builder with time limits and reversible previous plan versions
 - Manual food/water diary, user-entered daily targets, edit/delete flows and session-scoped draft recovery
 - Optional web account/consent/manual cloud-sync UI, disabled without explicit configuration
@@ -39,6 +40,8 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 See [measurement preferences](docs/MEASUREMENT_UNITS.md) for entry behavior, canonical storage and validation bounds.
 
 See [session exercise replacement](docs/SESSION_REPLACEMENT.md) for exactly what changes, what remains intact and stale-review safeguards.
+
+See [equipment-aware planning](docs/EQUIPMENT_PLANNING.md) for user-entered requirements, exact category matching, unknown states and backup/sharing boundaries. Matching equipment is not an assessment of an exercise's suitability.
 
 Coach collaboration requires separate service activation and explicit recipient/category consent. It is not professional verification or a live coaching service. See [backend contract](server/COACHING.md), [UI integration](docs/COACHING_UI.md) and [data handling](PRIVACY.md).
 

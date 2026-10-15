@@ -84,6 +84,16 @@ describe('coaching transport and strict contract', () => {
     const { api } = await setup(json({ relationshipId: 'relation-1', relationshipVersion: 2, feedback: [] }))
     await expect(api.feedback(relation())).rejects.toMatchObject({ code: 'coaching_conflict' })
   })
+  it.each([undefined, [], ['barbell', 'bench']])('rejects equipment %j in coach plan and previous-plan responses even though private state accepts it', equipment => {
+    for (const previous of [false, true]) {
+      const base = freshState()
+      base.planHistory = [{ id: 'plan-1', label: 'Previous plan', savedAt: stamp, workouts: structuredClone(base.workouts) }]
+      const workouts = previous ? base.planHistory[0].workouts : base.workouts
+      Object.assign(workouts[0].exercises[0], { equipment })
+      const categories = { training: { workouts: base.workouts, logs: base.logs, planHistory: base.planHistory } }
+      expect(() => readCoachingSnapshot(response(granted(), categories), granted())).toThrow('could not be validated')
+    }
+  })
   it('does not retry conflicts or failed writes and reports disabled service truthfully', async () => {
     const { api, fetcher } = await setup(json({ error: { code: 'coaching_conflict' } }, 409), json({ error: { code: 'coaching_disabled' } }, 503))
     await expect(api.consent(relation(), [], true)).rejects.toMatchObject({ status: 409 })

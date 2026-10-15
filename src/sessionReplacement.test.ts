@@ -112,4 +112,45 @@ describe('explicit session exercise replacement', () => {
     expect(log.sets).toEqual(next.activeSession!.sets)
     expect(parseState({ ...next, activeSession: null, logs: [log] }).logs[0]).toEqual(log)
   })
+  it('carries reviewed requirements into only the active replacement and keeps completed source requirements', () => {
+    const state = setup(); const selected = target(state)
+    state.activeSession!.workout.exercises[0].equipment = ['barbell', 'bench']
+    selected.equipment = ['exercise-mat']
+    state.activeSession!.sets[0].completed = true
+    const original = structuredClone(state)
+    const review = reviewSessionReplacement(state, sourceId(state), selected)
+    const next = applySessionReplacement(state, review)
+    const [source, replacement] = next.activeSession!.workout.exercises
+    expect(source.equipment).toEqual(['barbell', 'bench'])
+    expect(replacement.equipment).toEqual(['exercise-mat'])
+    expect(next.workouts).toBe(state.workouts); expect(next.logs).toBe(state.logs); expect(next.planHistory).toBe(state.planHistory)
+    expect(parseBackup(JSON.stringify(next))).toEqual(next)
+    replacement.equipment!.push('stability-ball')
+    expect(review.replacement.equipment).toEqual(['exercise-mat'])
+    expect(state).toEqual(original)
+  })
+  it('freezes nested reviewed requirements and keeps external selection edits out of the review', () => {
+    const state = setup(); const selected = target(state)
+    state.activeSession!.workout.exercises[0].equipment = []
+    selected.equipment = ['exercise-mat']
+    const review = reviewSessionReplacement(state, sourceId(state), selected)
+    expect(Object.isFrozen(review.source.equipment)).toBe(true)
+    expect(Object.isFrozen(review.replacement.equipment)).toBe(true)
+    expect(() => review.source.equipment!.push('bench')).toThrow()
+    expect(() => review.replacement.equipment!.push('dumbbells')).toThrow()
+    selected.equipment.push('stability-ball')
+    expect(review.replacement.equipment).toEqual(['exercise-mat'])
+    const next = applySessionReplacement(state, review)
+    expect(next.activeSession!.workout.exercises[0].equipment).toEqual(['exercise-mat'])
+  })
+  it('rejects a review after active requirements change and rejects malformed selected requirements', () => {
+    const state = setup(); state.activeSession!.workout.exercises[0].equipment = ['bench']
+    const review = reviewSessionReplacement(state, sourceId(state), target(state))
+    state.activeSession!.workout.exercises[0].equipment!.push('barbell')
+    expect(() => applySessionReplacement(state, review)).toThrow('changed')
+    const selected = { ...target(state), equipment: ['bench', 'bench'] as ['bench', 'bench'] }
+    const before = structuredClone(state)
+    expect(() => reviewSessionReplacement(state, sourceId(state), selected)).toThrow()
+    expect(state).toEqual(before)
+  })
 })

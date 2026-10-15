@@ -4,7 +4,7 @@ Release-review draft, updated 2026-10-15. This describes the source code; it is 
 
 ## Local data
 
-The default build works without an account or API. Profile/body measurements, goals, workout plans and previous plan versions, training sets/notes, active sessions, weight entries, manual food/water entries and daily targets, and preferences are stored in this application's local browser/WebView storage. It is not application-layer encrypted. Browser and native installations have separate stores.
+The default build works without an account or API. Profile/body measurements, goals, workout plans and previous plan versions (including explicitly recorded exercise equipment requirements), training sets/notes, active sessions, weight entries, manual food/water entries and daily targets, and preferences are stored in this application's local browser/WebView storage. It is not application-layer encrypted. Browser and native installations have separate stores. Available-equipment filter selections are temporary view state, not saved inventory or uploaded profile data.
 
 Unfinished plan and nutrition edits use sessionStorage for recovery within the current tab. They are not part of saved backups. Successful import/reset/cloud restoration clears these drafts; cleanup failures are reported. Closing a tab, clearing storage or uninstalling can remove local records. Verify a private backup before uninstalling or clearing app storage.
 
@@ -19,7 +19,7 @@ When an enabled web service is used:
 - Passwords are salted and hashed on the server; session/email tokens are stored as hashes. Browser sessions use HttpOnly cookies; CSRF/session metadata stays in memory, not localStorage or sessionStorage
 - Registration and recovery require an implemented, approved email adapter. The supplied executable deliberately has no live email provider and returns an unavailable error rather than inventing email delivery
 - Cloud fitness access requires explicit recipient-specific consent. Each upload or device restore then requires a separate manual review and confirmation
-- A full fitness snapshot includes profile/body measurements, training/notes and prior plan versions, weight history, nutrition/targets, preferences and the paused active session. Records can reveal sensitive health information
+- A full fitness snapshot includes profile/body measurements, training/notes and prior plan versions with saved equipment requirements, weight history, nutrition/targets, preferences and the paused active session. Records can reveal sensitive health information
 - There is no background sync, third-party AI analysis or automatic health-data transmission
 - Conflicts require another inspection and choice; local and cloud records are not automatically merged
 
@@ -29,7 +29,7 @@ The SQLite server stores the current snapshot. File access restrictions are not 
 
 The separate coaching service is disabled by default. A signed-in user must manually request its availability. An invitation identifies one known account email; it sends no health snapshot and does not claim the person is a qualified coach. The recipient must explicitly accept. Every new accepted relationship starts with no health-data access.
 
-The athlete then reviews the exact accepted account identity and explicitly chooses training, body measurements and/or nutrition categories. This is ongoing permission for the selected categories in current and future saved cloud snapshots until revoked. Training includes private workout/exercise notes and saved plan versions; body includes height/weight and the weight diary; nutrition includes manual food/water records, notes and targets. Full profile identity, birth year, preferences and active/live sessions are never included in a coach projection. The coach sees only manual reads of already-uploaded snapshots, not unsaved device changes.
+The athlete then reviews the exact accepted account identity and explicitly chooses training, body measurements and/or nutrition categories. This is ongoing permission for the selected categories in current and future saved cloud snapshots until revoked. Training includes private workout/exercise notes and saved plan versions; body includes height/weight and the weight diary; nutrition includes manual food/water records, notes and targets. Full profile identity, birth year, preferences, equipment-requirement metadata and active/live sessions are never included in a coach projection. The coach sees only manual reads of already-uploaded snapshots, not unsaved device changes.
 
 Permission and account verification are checked server-side on every read/write. Either accepted party may end a relationship; revocation stops future permitted reads. Revoking cloud-health consent also clears every coach category grant; re-enabling cloud consent never re-enables those grants. These controls cannot recall previously read, copied or exported data. Operators still need approved recipient/category consent text, retention and abuse-response policies before enabling real sharing.
 

@@ -335,3 +335,14 @@ it('discloses effects of a manual cloud upload on separately consented private c
   await login(); await checkAndInspect(); fireEvent.click(screen.getByRole('button', { name: 'Review upload' }))
   expect(screen.getByRole('region', { name: 'Confirm health-data upload' })).toHaveTextContent('Private challenge partners with both current grants can read updated training-day counts for the reviewed UTC windows')
 })
+
+it('discloses saved equipment requirements in consent and upload while excluding temporary selections and coach views', async () => {
+  setup(json(auth), json(consent()), json(consent()), json(snapshot()))
+  await login()
+  expect(screen.getByText(/Transfers include your training plans/)).toHaveTextContent('including saved exercise equipment requirements')
+  await checkAndInspect(); fireEvent.click(screen.getByRole('button', { name: 'Review upload' }))
+  const review = screen.getByRole('region', { name: 'Confirm health-data upload' })
+  expect(review).toHaveTextContent('saved exercise equipment requirements')
+  expect(review).toHaveTextContent('Temporary available-equipment selections are not uploaded')
+  expect(review).toHaveTextContent('Equipment requirements are omitted from coach views')
+})

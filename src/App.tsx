@@ -49,8 +49,8 @@ function App() {
     <Route path="/" element={<Dashboard state={state} />} />
     <Route path="/workouts" element={<Workouts workouts={state.workouts} />} />
     <Route path="/workouts/:id" element={<WorkoutSession state={state} update={update} readGeneration={() => stateGeneration.current} />} />
-    <Route path="/plan" element={<PlanEditor state={state} update={update} />} />
-    <Route path="/schedule" element={<ScheduleBuilder state={state} update={update} />} />
+    <Route path="/plan" element={<PlanEditor state={state} update={update} readGeneration={() => stateGeneration.current} />} />
+    <Route path="/schedule" element={<ScheduleBuilder state={state} update={update} readGeneration={() => stateGeneration.current} />} />
     <Route path="/nutrition" element={<Nutrition state={state.nutrition} onUpdate={change => update(current => ({ ...current, nutrition: change(current.nutrition) }))} />} />
     <Route path="/progress" element={<ProgressDashboard state={state} onDelete={id => { if (window.confirm('Delete this saved workout? This action cannot be undone.')) update(current => ({ ...current, logs: current.logs.filter(log => log.id !== id) }), 'Workout removed') }} onWeight={entry => update(current => { const weightHistory = [...current.weightHistory.filter(item => item.date !== entry.date), entry].sort((a,b) => a.date.localeCompare(b.date)); return { ...current, profile: { ...current.profile, weightKg: weightHistory[weightHistory.length - 1].weightKg }, weightHistory } }, 'Weight updated')} />} />
     <Route path="/account" element={<Account state={state} onRestore={next => { const saved = update(() => next, 'Cloud copy restored'); if (saved) clearDrafts(); return saved }} />} />

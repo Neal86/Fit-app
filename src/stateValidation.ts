@@ -1,5 +1,6 @@
 import type { AppState } from './types.js'
 import { parseNutritionState } from './nutrition.js'
+import { isEquipmentList } from './equipment.js'
 
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const fields = (value: Record<string, unknown>, allowed: string[]) => Object.keys(value).every(key => allowed.includes(key))
@@ -13,7 +14,7 @@ const id = (value: unknown) => text(value, 150, 1)
 const list = (value: unknown, valid: (item: unknown) => boolean, max: number, min = 0): value is unknown[] => Array.isArray(value) && value.length >= min && value.length <= max && Array.from(value).every(valid)
 const unique = (items: unknown[]) => new Set(items.map(item => object(item) ? item.id : item)).size === items.length
 const levels = ['Beginner', 'Intermediate', 'Advanced']
-const exercise = (value: unknown): boolean => object(value) && fields(value, ['id', 'name', 'sets', 'reps', 'restSeconds', 'category', 'notes']) && id(value.id) && text(value.name, 100, 1) && integer(value.sets, 1, 20) && text(value.reps, 50, 1) && integer(value.restSeconds, 0, 900) && text(value.category, 100) && (value.notes === undefined || text(value.notes, 1000))
+const exercise = (value: unknown): boolean => object(value) && fields(value, ['id', 'name', 'sets', 'reps', 'restSeconds', 'category', 'notes', 'equipment']) && id(value.id) && text(value.name, 100, 1) && integer(value.sets, 1, 20) && text(value.reps, 50, 1) && integer(value.restSeconds, 0, 900) && text(value.category, 100) && (value.notes === undefined || text(value.notes, 1000)) && (value.equipment === undefined || isEquipmentList(value.equipment))
 const workout = (value: unknown): boolean => object(value) && fields(value, ['id', 'title', 'day', 'duration', 'calories', 'difficulty', 'description', 'exercises']) && id(value.id) && text(value.title, 150, 1) && text(value.day, 30, 1) && number(value.duration, 1, 600) && number(value.calories, 0, 10000) && choice(value.difficulty, levels) && text(value.description, 2000) && list(value.exercises, exercise, 50, 1) && unique(value.exercises)
 const nullableNumber = (value: unknown, min: number, max: number) => value === null || number(value, min, max)
 const set = (value: unknown): boolean => object(value) && fields(value, ['id', 'exerciseId', 'setNumber', 'reps', 'weightKg', 'seconds', 'rpe', 'warmup', 'completed']) && id(value.id) && id(value.exerciseId) && integer(value.setNumber, 1, 50) && (value.reps === null || integer(value.reps, 0, 999)) && nullableNumber(value.weightKg, 0, 1000) && nullableNumber(value.seconds, 0, 86400) && nullableNumber(value.rpe, 1, 10) && typeof value.warmup === 'boolean' && typeof value.completed === 'boolean'

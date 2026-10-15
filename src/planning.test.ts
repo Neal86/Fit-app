@@ -44,6 +44,30 @@ describe('versioned personal schedules', () => {
     expect(schedule[0].exercises[0].id).not.toBe(schedule[1].exercises[0].id)
     expect(parseState({ ...freshState(), workouts: schedule }).workouts).toHaveLength(2)
   })
+  it('keeps equipment arrays independent when the same workout is scheduled twice', () => {
+    const workouts = freshState().workouts; workouts[0].exercises[0].equipment = ['barbell', 'bench']
+    const schedule = schedulePreview(workouts, [{ day: 'Monday', workoutId: workouts[0].id }, { day: 'Friday', workoutId: workouts[0].id }], 60)
+    schedule[1].exercises[0].equipment!.push('weight-plates')
+    expect(workouts[0].exercises[0].equipment).toEqual(['barbell', 'bench'])
+    expect(schedule[0].exercises[0].equipment).toEqual(['barbell', 'bench'])
+  })
+  it('records and restores equipment-only changes while retaining active and completed history', () => {
+    const state = freshState(); state.workouts[0].exercises[0].equipment = []
+    state.activeSession = startSession(state.workouts[0])
+    const modified = structuredClone(state.workouts); modified[0].exercises[0].equipment = ['bench']
+    const next = savePlanRevision(state, modified, 'Before equipment change')
+    expect(next.workouts[0].exercises[0].equipment).toEqual(['bench'])
+    expect(next.planHistory[0].workouts[0].exercises[0].equipment).toEqual([])
+    expect(next.activeSession).toBe(state.activeSession); expect(next.logs).toBe(state.logs)
+    const restored = restorePlanRevision(next, next.planHistory[0].id)
+    expect(restored.workouts).toEqual(state.workouts)
+    expect(restored.planHistory[0].workouts[0].exercises[0].equipment).toEqual(['bench'])
+    expect(parseState(restored)).toEqual(restored)
+    restored.workouts[0].exercises[0].equipment!.push('dumbbells')
+    expect(state.workouts[0].exercises[0].equipment).toEqual([])
+    expect(next.planHistory[0].workouts[0].exercises[0].equipment).toEqual([])
+    expect(restored.activeSession!.workout.exercises[0].equipment).toEqual([])
+  })
   it('rejects empty, duplicate-day, missing-workout and invalid-time inputs', () => {
     const workouts = freshState().workouts
     expect(() => schedulePreview(workouts, [], 60)).toThrow()
