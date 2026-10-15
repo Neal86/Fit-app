@@ -271,3 +271,26 @@ it.each(['snapshot', 'feedback'] as const)('requires a fresh %s read after a hid
   expect(await screen.findByRole('region', { name: 'Displayed collaborator data' })).toBeInTheDocument()
   expect(fetcher).toHaveBeenCalledTimes(4)
 })
+
+it('uses the viewer preference for read-only body and training data without widening shared data or changing nutrition units', async () => {
+  const state = freshState(); const kgPerLb = 0.45359237
+  const snapshot = {
+    relationshipId: 'relation-1', relationshipVersion: 1, revision: 3, updatedAt: stamp,
+    categories: {
+      training: { workouts: state.workouts, planHistory: [], logs: [{ id: 'shared-log', workoutId: state.workouts[0].id, title: 'Shared workout', startedAt: stamp, completedAt: stamp, duration: 1, calories: 1, completedExerciseIds: [], sets: [{ id: 'shared-set', exerciseId: state.workouts[0].exercises[0].id, setNumber: 1, reps: 8, weightKg: 100 * kgPerLb, seconds: null, rpe: null, warmup: false, completed: true }] }] },
+      body: { measurements: { weightKg: 150 * kgPerLb, heightCm: 70 * 2.54 }, weightHistory: [{ id: 'shared-weight', date: '2026-10-15', weightKg: 150 * kgPerLb }] },
+      nutrition: { ...state.nutrition, hydration: [{ id: 'water', date: '2026-10-15', milliliters: 250, note: '' }] },
+    },
+  }
+  const { client, fetcher, rerender } = await setup([json(overview([coachRelation(['training', 'body', 'nutrition'])])), json(snapshot)], 'coach')
+  rerender(<Coaching client={client} unit="imperial"/>); await check()
+  fireEvent.click(screen.getByRole('button', { name: 'Read shared cloud snapshot' }))
+  expect(await screen.findByText('Saved weight: 150 lb · Height: 70 in')).toBeInTheDocument()
+  expect(screen.getByText('2026-10-15: 150 lb')).toBeInTheDocument()
+  expect(screen.getByText(/Set 1: 8 reps · 100 lb/)).toBeInTheDocument()
+  expect(screen.getByText(/2026-10-15 · 250 ml/)).toBeInTheDocument()
+  rerender(<Coaching client={client} unit="metric"/>)
+  expect(screen.getByText('Saved weight: 68.04 kg · Height: 177.8 cm')).toBeInTheDocument()
+  expect(fetcher).toHaveBeenCalledTimes(3)
+  expect(snapshot.categories.body.measurements.weightKg).toBe(150 * kgPerLb)
+})

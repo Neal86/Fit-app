@@ -3,6 +3,8 @@ import { CloudClient, CloudError } from '../cloud'
 import { COACHING_POLICY, COACHING_SCOPES, CoachingClient, SCOPE_LABELS, coachingEmail, coachingFeedbackText } from '../coaching'
 import type { CoachingFeedback, CoachingFeedbackList, CoachingInvitation, CoachingOverview, CoachingRelationship, CoachingScope, CoachingSnapshot } from '../coaching'
 import './Coaching.css'
+import { formatMeasurement, measurementUnit } from '../units'
+import type { UnitSystem } from '../units'
 
 type Review =
   | { kind: 'invite' | 'cancelInvite'; email: string }
@@ -14,12 +16,12 @@ type Review =
 type Detail = { relationship: CoachingRelationship; snapshot?: CoachingSnapshot; feedback?: CoachingFeedbackList }
 
 /** Embed with the Account page's existing stable CloudClient. Mounting never makes a request. */
-export default function Coaching({ client }: { client: CloudClient }) {
+export default function Coaching({ client, unit = 'metric' }: { client: CloudClient; unit?: UnitSystem }) {
   const sessionKey = useSyncExternalStore(client.subscribeSession, () => client.sessionRevision, () => client.sessionRevision)
   // A new generation remounts the entire private view, even for a same-account re-login.
-  return <CoachingSession key={sessionKey} client={client} sessionKey={sessionKey}/>
+  return <CoachingSession key={sessionKey} client={client} sessionKey={sessionKey} unit={unit}/>
 }
-function CoachingSession({ client, sessionKey }: { client: CloudClient; sessionKey: number }) {
+function CoachingSession({ client, sessionKey, unit }: { client: CloudClient; sessionKey: number; unit: UnitSystem }) {
   const [api] = useState(() => new CoachingClient(client))
   const [overview, setOverview] = useState<CoachingOverview | null>(null)
   const [detail, setDetail] = useState<Detail | null>(null)
@@ -164,7 +166,7 @@ function CoachingSession({ client, sessionKey }: { client: CloudClient; sessionK
       </form>}
       {detail && <section className="coaching-detail" aria-label="Displayed collaborator data"><h3>Data from {detail.relationship.counterpart.email}</h3><p className="coaching-identity">Account ID: {detail.relationship.counterpart.id} · Reviewed access version {detail.relationship.version}</p>
         <button className="secondary-button" disabled={busy} onClick={() => setDetail(null)}>Close displayed data</button>
-        {detail.snapshot && <SnapshotView snapshot={detail.snapshot}/>}
+        {detail.snapshot && <SnapshotView snapshot={detail.snapshot} unit={unit}/>}
         {detail.feedback && <><h4>Plain-text feedback</h4>{!detail.feedback.feedback.length && <p>No feedback was returned.</p>}{detail.feedback.feedback.map(item => <article key={item.id} className="coaching-feedback"><p className="coaching-plaintext">{item.text}</p><small>{new Date(item.createdAt).toLocaleString()}</small>{detail.relationship.role === 'athlete' && <button className="secondary-button danger" disabled={disabled} onClick={() => prepare({ kind: 'deleteFeedback', relationship: detail.relationship, feedback: item })}>Review removing feedback</button>}</article>)}</>}
       </section>}
       {review && <section className="coaching-review" role="region" aria-labelledby="coaching-review-title" tabIndex={-1} ref={node => node?.focus()}>
@@ -186,15 +188,15 @@ function ReviewDescription({ review, endpoint }: { review: Review; endpoint: str
     {review.kind === 'deleteFeedback' && <><p>Remove this feedback from your collaboration history?</p><p className="coaching-plaintext">{review.feedback.text}</p></>}
   </>
 }
-function SnapshotView({ snapshot }: { snapshot: CoachingSnapshot }) {
+function SnapshotView({ snapshot, unit }: { snapshot: CoachingSnapshot; unit: UnitSystem }) {
   const { training, body, nutrition } = snapshot.categories
-  return <div className="coaching-snapshot"><p>Saved cloud revision {snapshot.revision} · Updated {new Date(snapshot.updatedAt).toLocaleString()}. This is a read-only saved copy, not a live workout.</p>
+  return <div className="coaching-snapshot"><p>Saved cloud revision {snapshot.revision} · Updated {new Date(snapshot.updatedAt).toLocaleString()}. This is a read-only saved copy, not a live workout. Measurements use your viewing preference ({measurementUnit('weight', unit)}, {measurementUnit('height', unit)}).</p>
     {training && <section aria-label="Shared training category"><h4>Shared training</h4><p>{training.workouts.length} plans · {training.logs.length} saved workouts · {training.planHistory.length} saved plan versions</p>
       {training.workouts.map(workout => <details key={workout.id}><summary>{workout.title} · {workout.day}</summary><p>{workout.description}</p>{workout.exercises.map(exercise => <div key={exercise.id}><strong>{exercise.name}</strong><p>{exercise.sets} sets · {exercise.reps} reps · {exercise.restSeconds}s rest</p>{exercise.notes && <p className="coaching-plaintext">{exercise.notes}</p>}</div>)}</details>)}
-      <details><summary>Workout history (up to 100 newest saved records)</summary>{[...training.logs].sort((a, b) => b.completedAt.localeCompare(a.completedAt)).slice(0, 100).map(log => <article key={log.id}><h5>{log.title}</h5><p>{new Date(log.completedAt).toLocaleString()} · {log.duration} minutes</p>{log.notes && <p className="coaching-plaintext">{log.notes}</p>}{log.sets?.map(set => <p key={set.id}>Set {set.setNumber}: {set.reps ?? '—'} reps · {set.weightKg ?? '—'} kg · {set.seconds ?? '—'} seconds · RPE {set.rpe ?? '—'}{set.warmup ? ' · Warm-up' : ''} · {set.completed ? 'Completed' : 'Not completed'}</p>)}</article>)}</details>
+      <details><summary>Workout history (up to 100 newest saved records)</summary>{[...training.logs].sort((a, b) => b.completedAt.localeCompare(a.completedAt)).slice(0, 100).map(log => <article key={log.id}><h5>{log.title}</h5><p>{new Date(log.completedAt).toLocaleString()} · {log.duration} minutes</p>{log.notes && <p className="coaching-plaintext">{log.notes}</p>}{log.sets?.map(set => <p key={set.id}>Set {set.setNumber}: {set.reps ?? '—'} reps · {set.weightKg === null ? '—' : formatMeasurement(set.weightKg, 'load', unit)} {measurementUnit('load', unit)} · {set.seconds ?? '—'} seconds · RPE {set.rpe ?? '—'}{set.warmup ? ' · Warm-up' : ''} · {set.completed ? 'Completed' : 'Not completed'}</p>)}</article>)}</details>
       <details><summary>Saved plan versions</summary>{training.planHistory.map(plan => <div key={plan.id}><h5>{plan.label}</h5><p>{new Date(plan.savedAt).toLocaleString()} · {plan.workouts.map(workout => workout.title).join(', ')}</p></div>)}</details>
     </section>}
-    {body && <section aria-label="Shared body category"><h4>Shared body measurements</h4><p>Saved weight: {body.measurements.weightKg} kg · Height: {body.measurements.heightCm} cm</p><details><summary>Weight diary ({body.weightHistory.length} entries, up to 100 shown)</summary>{[...body.weightHistory].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100).map(entry => <p key={entry.id}>{entry.date}: {entry.weightKg} kg</p>)}</details></section>}
+    {body && <section aria-label="Shared body category"><h4>Shared body measurements</h4><p>Saved weight: {formatMeasurement(body.measurements.weightKg, 'weight', unit)} {measurementUnit('weight', unit)} · Height: {formatMeasurement(body.measurements.heightCm, 'height', unit)} {measurementUnit('height', unit)}</p><details><summary>Weight diary ({body.weightHistory.length} entries, up to 100 shown)</summary>{[...body.weightHistory].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100).map(entry => <p key={entry.id}>{entry.date}: {formatMeasurement(entry.weightKg, 'weight', unit)} {measurementUnit('weight', unit)}</p>)}</details></section>}
     {nutrition && <section aria-label="Shared nutrition category"><h4>Shared nutrition diary</h4><p>Manually entered records and targets. These are not recommendations.</p><details><summary>Food ({nutrition.meals.length} entries, up to 100 shown)</summary>{[...nutrition.meals].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100).map(meal => <p key={meal.id}>{meal.date} · {meal.mealType} · {meal.foodName} · {meal.serving} · {meal.calories} kcal · Protein {meal.protein}g · Carbs {meal.carbs}g · Fat {meal.fat}g</p>)}</details><details><summary>Water ({nutrition.hydration.length} entries, up to 100 shown)</summary>{[...nutrition.hydration].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100).map(entry => <p key={entry.id}>{entry.date} · {entry.milliliters} ml · {entry.note}</p>)}</details><details><summary>Manual targets ({nutrition.targets.length} dates, up to 100 shown)</summary>{[...nutrition.targets].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100).map(target => <p key={target.date}>{target.date} · {target.calories} kcal · Protein {target.protein}g · Carbs {target.carbs}g · Fat {target.fat}g · Water {target.milliliters} ml</p>)}</details></section>}
   </div>
 }

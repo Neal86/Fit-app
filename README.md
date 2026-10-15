@@ -6,6 +6,7 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 
 - Guided first-run onboarding
 - Personalized goals, experience level, height, weight, and weekly target
+- Metric/imperial body measurements and training loads, with canonical-safe entry, history and progress readouts
 - Responsive desktop, mobile web, iPhone, iPad, and Android layouts
 - Dashboard with weekly completion, calories, minutes, and next-workout recommendation
 - Searchable workout library
@@ -32,6 +33,8 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 - iOS safe-area and Android full-screen viewport handling
 - Apple privacy manifest and Android secure-network configuration
 - Production Docker image with Nginx SPA fallback, health check, caching, and security headers
+
+See [measurement preferences](docs/MEASUREMENT_UNITS.md) for entry behavior, canonical storage and validation bounds.
 
 Coach collaboration requires separate service activation and explicit recipient/category consent. It is not professional verification or a live coaching service. See [backend contract](server/COACHING.md), [UI integration](docs/COACHING_UI.md) and [data handling](PRIVACY.md).
 

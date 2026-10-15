@@ -32,7 +32,7 @@ describe('critical user journeys', () => {
     act(() => vi.advanceTimersByTime(30000))
     expect(screen.getByTestId('session-timer')).toHaveTextContent('00:30')
     cleanup(); open('/workouts/upper-power')
-    expect(screen.getByLabelText('Bench Press set 1 weight')).toHaveValue(20)
+    expect(screen.getByLabelText('Bench Press set 1 weight')).toHaveValue('20')
     expect(screen.getByRole('button', { name: 'Undo Bench Press set 1' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Pause timer' }))
     act(() => vi.advanceTimersByTime(10000))

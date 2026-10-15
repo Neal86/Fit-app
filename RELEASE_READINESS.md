@@ -11,6 +11,7 @@ No automatic CI, production deployment, paid service, live email/AI provider, re
 ## Implemented and integrated
 
 ### Training, plans and progress
+- Metric/imperial weight, load and height input/display, with canonical kg/cm retained across repeated switches, backup and sync; see [measurement behavior](docs/MEASUREMENT_UNITS.md)
 - Durable session snapshots; real elapsed start/pause/resume; completed/timed sets, load, reps, RPE, warm-up flags, rest countdown and prior-set references
 - Partial completion confirmation, stable identities and duplicate/stale finish protection; editable plans do not rewrite active or historical sessions
 - Editable schedules, exercises and notes; reusable exercise catalog search/categories from existing templates/user entries
@@ -52,11 +53,11 @@ No automatic CI, production deployment, paid service, live email/AI provider, re
 
 ## Verification
 
-On 2026-10-15, the integrated source passed `npm run check`: 261 frontend unit/component/native-runtime tests, 80 backend security/HTTP/race/migration tests, and 4 real client/server protocol tests (345 total), plus ESLint, TypeScript, Vite and offline-shell generation. This includes coach collaboration, async session/view invalidation, recipient-independent invitation budgets, timestamp-ordered prior-set references and exclusion of future-dated imported workouts from the current weekly total. The test harness caps parallel workers at four; the real 10 MiB boundary fixture has a 15-second test-only budget after a shared-CPU five-second timeout, with its assertions unchanged.
+On 2026-10-15, the integrated source passed `npm run check`: 334 frontend unit/component/native-runtime tests, 80 backend security/HTTP/race/migration tests, and 4 real client/server protocol tests (418 total), plus ESLint, TypeScript, Vite and offline-shell generation. This includes metric/imperial entry and readouts, canonical-value precision, failed-save and unit-switch draft handling, coach collaboration, async session/view invalidation, recipient-independent invitation budgets, timestamp-ordered prior-set references and exclusion of future-dated imported workouts from the current weekly total. The test harness caps parallel workers at four; the real 10 MiB boundary fixture has a 15-second test-only budget after a shared-CPU five-second timeout, with its assertions unchanged.
 
 | Gate | Evidence/status |
 |---|---|
-| Local lint/unit/component/API/protocol/build | Passed: 261 frontend + 80 backend + 4 protocol tests (345 total), lint and production build |
+| Local lint/unit/component/API/protocol/build | Passed: 334 frontend + 80 backend + 4 protocol tests (418 total), lint and production build |
 | Production dependency audit | Re-run 2026-10-15: 0 known production vulnerabilities |
 | Android + iOS `cap sync` | Passed again on integrated build; copies assets/plugins only, not native compilation |
 | Native XML/plist/Xcode resource parsing | Passed again on integrated projects: Android XML, iOS plist/privacy and shared scheme syntax |
@@ -81,13 +82,13 @@ npm run test:e2e
 
 The local-only frontend can use Node 22+ with `npm run lint`, `npm run test`, `npm run build`. `cap sync` is not native compilation. A successful source test is not device/store approval.
 
-Independent review rechecked the earlier delayed-email/password race, wide-payload memory amplification, nutrition drafts and account guards. The latest review independently passed 37 backend tests, 95 frontend tests and 3 isolated regressions, plus four capacity-probe scenarios. Its three findings are closed: invitation capacity no longer distinguishes eligible recipients, hidden views cannot revive delayed collaborator reads, and session invalidation cancels local restore/export. This is source review, not a penetration test or production certification.
+Independent review rechecked the earlier delayed-email/password race, wide-payload memory amplification, nutrition drafts and account guards. The latest review independently passed 37 backend tests, 95 frontend tests and 3 isolated regressions, plus four capacity-probe scenarios. Its three findings are closed: invitation capacity no longer distinguishes eligible recipients, hidden views cannot revive delayed collaborator reads, and session invalidation cancels local restore/export. A subsequent independent unit-preference review passed 150 focused tests and 9 additional probes, including 3,000 seeded exact round-trip cases, with no actionable findings. This is source review, not a penetration test or production certification.
 
 ## Full-product gap matrix
 
 | Area | Current code | Remaining final-product gate |
 |---|---|---|
-| Training execution | Durable set/session workflow | Mid-session movement replacement, supersets/drop sets, unit conversion, reviewed progression/deload rules and device/keyboard/accessibility QA |
+| Training execution | Durable set/session workflow and canonical-safe metric/imperial load entry | Mid-session movement replacement, supersets/drop sets, reviewed progression/deload rules and device/keyboard/accessibility QA |
 | Individual plans | User-chosen weekly schedule, editable templates, prior versions | Assessment/equipment-driven plan design and reviewed adjustment policy; no AI prescription is claimed |
 | Exercise content | Searchable reusable starter/user entries and notes | Reviewed instruction catalog, equipment/muscle taxonomy, licensed demonstrations/videos, variants and content provenance |
 | Accounts | Tested account/session/recovery API and optional Web UI | Approved live email adapter, deployed same-site HTTPS service, browser/session acceptance, optional social sign-in, operational support |

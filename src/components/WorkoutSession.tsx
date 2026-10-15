@@ -4,6 +4,8 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { elapsedSeconds, finishSession, formatTime, previousSet, startSession, toggleSession, uid } from '../session'
 import type { ActiveSession, AppState, ExerciseSet } from '../types'
 import { nativeSuccessFeedback } from '../native'
+import { formatMeasurement, measurementDraft, measurementRange, measurementUnit, readMeasurement, syncMeasurement } from '../units'
+import type { MeasurementDraft } from '../units'
 
 export type UpdateState = (change: (state: AppState) => AppState, message?: string) => boolean
 export default function WorkoutSession({ state, update }: { state: AppState; update: UpdateState }) {
@@ -15,13 +17,29 @@ export default function WorkoutSession({ state, update }: { state: AppState; upd
   const active = state.activeSession
   const session = active?.workout.id === id ? active : null
   const workout = session?.workout ?? state.workouts.find(item => item.id === id)
+  const unit = state.profile.unit
+  const [draftSource, setDraftSource] = useState({ session, unit })
+  const [loads, setLoads] = useState<Record<string, MeasurementDraft>>(() => Object.fromEntries((session?.sets ?? []).map(set => [set.id, measurementDraft(set.weightKg, 'load', unit)])))
+  if (draftSource.session !== session || draftSource.unit !== unit) {
+    const sameSession = draftSource.session?.id === session?.id
+    setDraftSource({ session, unit })
+    setLoads(Object.fromEntries((session?.sets ?? []).map(set => [set.id, sameSession && loads[set.id] ? syncMeasurement(loads[set.id], set.weightKg, 'load', unit) : measurementDraft(set.weightKg, 'load', unit)])))
+  }
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 250)
     return () => clearInterval(timer)
   }, [])
   if (!workout) return <Navigate to="/workouts" replace />
-  const change = (edit: (session: ActiveSession) => ActiveSession) => update(current => { const draft = current.activeSession; return draft && draft.workout.id === id ? { ...current, activeSession: edit(draft) } : current })
+  const change = (edit: (session: ActiveSession) => ActiveSession) => update(current => { const draft = current.activeSession; if (draft && session && draft.id !== session.id) throw new Error('This session changed. Reopen it before editing.'); return draft && draft.workout.id === id ? { ...current, activeSession: edit(draft) } : current })
   const changeSet = (setId: string, patch: Partial<ExerciseSet>) => change(current => ({ ...current, sets: current.sets.map(set => set.id === setId ? { ...set, ...patch } : set) }))
+  const loadDraft = (set: ExerciseSet) => loads[set.id] ?? measurementDraft(set.weightKg, 'load', unit)
+  const saveLoad = (set: ExerciseSet) => {
+    try {
+      const weightKg = readMeasurement(loadDraft(set), 'load')
+      if (weightKg !== set.weightKg && !changeSet(set.id, { weightKg })) { setError('Load was not saved. Your entry is still here; retry before finishing.'); return false }
+      setLoads(previous => ({ ...previous, [set.id]: measurementDraft(weightKg, 'load', unit) })); setError(''); return true
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the load.'); return false }
+  }
   const start = () => {
     if (active && !window.confirm('Starting this workout will discard your current unfinished session. Continue?')) return
     update(current => ({ ...current, activeSession: startSession(workout) }), 'Session started and saved on this device')
@@ -31,11 +49,13 @@ export default function WorkoutSession({ state, update }: { state: AppState; upd
     if (session.sets.some(set => !set.completed) && !window.confirm('Some sets are unfinished. Save this partial workout?')) return
     saving.current = true
     try {
-      const log = finishSession(session)
+      const sets = session.sets.map(set => ({ ...set, weightKg: readMeasurement(loadDraft(set), 'load') }))
+      const log = finishSession({ ...session, sets })
       if (update(current => {
         if (current.activeSession?.id !== session.id || current.logs.some(item => item.id === log.id)) throw new Error('This session changed or was already saved. Reopen the active workout before saving.')
         return { ...current, activeSession: null, logs: [log, ...current.logs] }
       }, 'Workout saved')) navigate('/progress')
+      else setError('Workout was not saved. Your load entries are still here; retry when storage is available.')
     } catch (error) { setError(error instanceof Error ? error.message : 'Unable to save workout.') }
     finally { saving.current = false }
   }
@@ -52,7 +72,8 @@ export default function WorkoutSession({ state, update }: { state: AppState; upd
         <button className="secondary-button" onClick={() => change(current => toggleSession(current))}>{session.runningSince === null ? <><Play />Resume timer</> : <><Pause />Pause timer</>}</button>
         <div><span>Sets completed</span><strong>{completed}/{session.sets.length}</strong></div>
       </div>
-      <p className="session-note">Your session is saved after each change. You can leave this page or reopen the app to resume. Pause the timer during breaks you don’t want included.</p>
+      <p className="session-note">Loads save when you leave the field, press Enter, complete a set or finish the workout. Other changes save immediately. Incomplete or failed load edits stay on this page; save them before leaving. Pause the timer during breaks you don’t want included.</p>
+      <p id="workout-load-range" className="session-note">Load range: {measurementRange('load', unit)}. Leave blank for bodyweight; 0 records an explicit zero load.</p>
       {session.restUntil !== null && <div className="rest-timer" role="status"><strong>{rest > 0 ? `Rest: ${formatTime(rest)}` : 'Rest complete'}</strong><button className="secondary-button" onClick={() => change(current => ({ ...current, restUntil: null }))}>Dismiss rest timer</button></div>}
     </>}
     <div className="exercise-list">{workout.exercises.map(exercise => {
@@ -69,24 +90,28 @@ export default function WorkoutSession({ state, update }: { state: AppState; upd
               const value = event.target.value === '' ? null : Number(event.target.value)
               if (value === null || Number.isInteger(value) && value >= 0 && value <= (timed ? 86400 : 999)) changeSet(set.id, { [timed ? 'seconds' : 'reps']: value, completed: false })
             }} /></label>
-            <label>Weight (kg)<input aria-label={`${exercise.name} set ${index + 1} weight`} type="number" min="0" max="1000" step="0.1" placeholder="Bodyweight" value={set.weightKg ?? ''} onChange={event => {
-              const value = event.target.value === '' ? null : Number(event.target.value)
-              if (value === null || Number.isFinite(value) && value >= 0 && value <= 1000) changeSet(set.id, { weightKg: value })
-            }} /></label>
+            <label>Weight ({measurementUnit('load', loadDraft(set).unit)})<input aria-label={`${exercise.name} set ${index + 1} weight`} type="text" inputMode="decimal" autoComplete="off" maxLength={40} placeholder="Bodyweight" value={loadDraft(set).text} aria-describedby={`load-range-${set.id}`} onChange={event => {
+              const text = event.target.value
+              setLoads(previous => ({ ...previous, [set.id]: { ...loadDraft(set), text } }))
+            }} onBlur={() => saveLoad(set)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); saveLoad(set) } }} /><small id={`load-range-${set.id}`}>Load in {measurementUnit('load', loadDraft(set).unit)}; {measurementRange('load', loadDraft(set).unit)}. Blank means bodyweight.</small>{loadDraft(set).unit !== unit && <small>Finish this entry in {measurementUnit('load', loadDraft(set).unit)}; then it will display in {measurementUnit('load', unit)}.</small>}</label>
             <label>RPE (optional)<input aria-label={`${exercise.name} set ${index + 1} RPE`} type="number" min="1" max="10" step="0.5" value={set.rpe ?? ''} onChange={event => {
               const value = event.target.value === '' ? null : Number(event.target.value)
               if (value === null || value >= 1 && value <= 10) changeSet(set.id, { rpe: value })
             }} /></label>
             <label className="warmup-label"><input type="checkbox" checked={set.warmup} onChange={event => changeSet(set.id, { warmup: event.target.checked })} />Warm-up</label>
             <button className={set.completed ? 'secondary-button' : 'primary-button'} aria-label={`${set.completed ? 'Undo' : 'Complete'} ${exercise.name} set ${index + 1}`} disabled={!set.completed && (timed ? set.seconds === null || set.seconds <= 0 : set.reps === null || set.reps <= 0)} onClick={() => {
-              const saved = change(current => ({ ...current, restUntil: set.completed ? current.restUntil : Date.now() + exercise.restSeconds * 1000, sets: current.sets.map(item => item.id === set.id ? { ...item, completed: !item.completed } : item) }))
-              if (saved && !set.completed && state.preferences.soundEnabled) void nativeSuccessFeedback()
+              try {
+                const weightKg = readMeasurement(loadDraft(set), 'load')
+                const saved = change(current => ({ ...current, restUntil: set.completed ? current.restUntil : Date.now() + exercise.restSeconds * 1000, sets: current.sets.map(item => item.id === set.id ? { ...item, weightKg, completed: !item.completed } : item) }))
+                if (saved) { setLoads(previous => ({ ...previous, [set.id]: measurementDraft(weightKg, 'load', unit) })); setError(''); if (!set.completed && state.preferences.soundEnabled) void nativeSuccessFeedback() }
+                else setError('Set was not saved. Your load entry is still here; retry when storage is available.')
+              } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the load before completing this set.') }
             }}>{set.completed ? 'Done' : 'Complete'}</button>
             <button className="icon-button danger" aria-label={`Remove ${exercise.name} set ${index + 1}`} disabled={sets.length <= 1} onClick={() => {
               if (set.completed && !window.confirm('Remove this completed set from the unfinished session?')) return
               change(current => ({ ...current, sets: current.sets.filter(item => item.id !== set.id) }))
             }}><Trash2 /></button>
-            {last && <small className="previous-set">Last: {last.reps ?? last.seconds ?? '—'}{last.seconds !== null ? ' sec' : ' reps'} · {last.weightKg ?? 0} kg</small>}
+            {last && <small className="previous-set">Last: {last.reps ?? last.seconds ?? '—'}{last.seconds !== null ? ' sec' : ' reps'} · {last.weightKg === null ? 'Bodyweight' : `${formatMeasurement(last.weightKg, 'load', unit)} ${measurementUnit('load', unit)}`} </small>}
           </div>
         })}</div><button className="secondary-button" disabled={sets.length >= 50 || Math.max(...sets.map(set => set.setNumber)) >= 50} onClick={() => change(current => ({ ...current, sets: [...current.sets, { id: uid(), exerciseId: exercise.id, setNumber: Math.max(0, ...sets.map(set => set.setNumber)) + 1, reps: null, seconds: null, weightKg: null, rpe: null, warmup: false, completed: false }] }))}><Plus />Add set</button></>}
       </article>
