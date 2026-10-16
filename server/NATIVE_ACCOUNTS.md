@@ -1,8 +1,10 @@
 # Native account protocol foundation
 
 This is a **source-only, default-off protocol**, not a released native account feature.
-The shipping client remains disabled. No native bridge, device validation, real mail,
-real credentials, health-data transfer, public service, or deployment is included.
+The shipping client remains disabled. The repository contains dedicated native-bridge
+source with empty recipient policies, but no full native compilation/device validation,
+real mail, real credentials, health-data transfer, public service or deployment is included.
+See [platform transport and acceptance gates](../docs/NATIVE_ACCOUNT_TRANSPORT.md).
 
 ## Enablement and boundary
 
@@ -54,7 +56,7 @@ implementation**. Existing request/response shapes are unchanged except native l
 }
 ```
 
-That login envelope is private to a future native-only bridge. Only login returns the
+That login envelope is private to the native-only transport. Only login returns the
 raw native token. Session reads return the existing session view, without nativeToken.
 No response error, export, database record, URL, cookie or application log contains it.
 There is no request/body/access logging and no debug credential endpoint.
@@ -115,7 +117,7 @@ operational migration needs approved backups, a synthetic restore rehearsal and 
 reviewed roll-forward/recovery plan. Synthetic tests constructing historical fixtures
 are not operational downgrade instructions.
 
-## Future bridge and release gates
+## Native bridge source and release gates
 
 The native bridge must own the volatile bearer, strip the private login envelope to
 the validated existing JS session shape, and never expose bearer, response headers or
@@ -127,7 +129,7 @@ local token does not prove server revocation; a cancelled/lost login can leave a
 bounded server session until expiry.
 
 The current web “check existing session” bootstrap cannot be reused if it first
-clears a volatile native token. No native UI or bridge is enabled by this change.
+clears a volatile native token. No native account UI or service recipient is enabled by this source.
 Existing JS generation fences, manual upload review, consent, CAS/conflict/replay and
 local-data protections remain necessary. Actual iOS/Android cookie isolation,
 redirect behavior, lifecycle cancellation, memory handling and device acceptance

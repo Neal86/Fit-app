@@ -23,7 +23,7 @@ The integration entry points are `openDatabase`, `createApp({db, config, mail, n
 | Variable | Default | Purpose |
 |---|---|---|
 | `FITFLOW_SERVER_ENABLED` | `false` | Explicit server opt-in |
-| `FITFLOW_NATIVE_ACCOUNTS_ENABLED` | `false` | Separate native protocol opt-in; requires secure configuration and an independently implemented isolated bridge, see [NATIVE_ACCOUNTS.md](NATIVE_ACCOUNTS.md) |
+| `FITFLOW_NATIVE_ACCOUNTS_ENABLED` | `false` | Separate native protocol opt-in; requires secure configuration and acceptance of the disabled isolated bridge source, see [NATIVE_ACCOUNTS.md](NATIVE_ACCOUNTS.md) |
 | `FITFLOW_COACHING_ENABLED` | `false` | Separate opt-in for bounded recipient/category-consented collaboration; see [COACHING.md](COACHING.md) |
 | `FITFLOW_SERVER_HOST` | `127.0.0.1` | Bind address; no implicit public listener |
 | `FITFLOW_SERVER_PORT` | `3001` | API port |
@@ -36,7 +36,7 @@ Production mode expects an independently configured HTTPS reverse proxy; this No
 
 Use the same site for app and API, ideally one origin with `/api/v1` routed to this server. Secure sessions use `__Host-fitflow_session; Path=/; Secure; HttpOnly; SameSite=Strict`, with no Domain attribute. The exact origin allowlist alone does not permit cross-site cookies. In loopback development use the same hostname (`localhost` on both sides), and the explicitly non-Secure `fitflow_session` cookie. Native `capacitor://localhost` and cross-site native `https://localhost` API access are **unsupported** in this slice. Do not work around this by weakening cookies, allowing wildcard origins, or adding bearer-token storage to localStorage.
 
-The separate native protocol foundation does not add WebView origins to this web allowlist. It uses `/api/native/v1`, an isolated session table and no cookie authentication. Its app bridge is deliberately unwired and native cloud access remains unavailable in the shipped UI. The shared SQLite schema advances to v6 transactionally; older servers reject it. Keep and verify a private pre-upgrade backup for deliberate rollback, and do not lower the schema version to force an older reader to open it. See [native security and migration boundaries](NATIVE_ACCOUNTS.md).
+The separate native protocol foundation does not add WebView origins to this web allowlist. It uses `/api/native/v1`, an isolated session table and no cookie authentication. Its dedicated native channel source has empty recipient policies; the typed adapter remains unwired to account UI and native cloud access remains unavailable. Platform compilation, dependency resolution and device acceptance are still required. The shared SQLite schema advances to v6 transactionally; older servers reject it. Keep and verify a private pre-upgrade backup for deliberate rollback, and do not lower the schema version to force an older reader to open it. See [native security and migration boundaries](NATIVE_ACCOUNTS.md).
 
 ## API contract
 

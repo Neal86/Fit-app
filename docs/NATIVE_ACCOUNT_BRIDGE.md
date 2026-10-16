@@ -4,9 +4,9 @@
 
 This is an **unwired, source-only TypeScript protocol contract**. It is not an Android or iOS plugin, a transport adapter, or evidence that native accounts work. It registers no plugin, performs no requests, installs no native configuration, and stores no credentials. `CloudClient` continues to set its endpoint to `null` on native platforms, and native Account UI remains disabled. A plugin claiming `available: true` must never, by itself, enable that UI.
 
-`src/nativeAccountContract.ts` contains pure validators, immutable copied values, constants, and a port declaration. Its only import is an erased type import for the existing `CloudSession` shape. The existing web cookie transport is unchanged. All tests use synthetic data.
+`src/nativeAccountContract.ts` contains pure validators, immutable copied values, constants, and a port declaration. Its only import is an erased type import for the existing `CloudSession` shape. The existing web cookie transport is unchanged. All tests use synthetic data. Separate [platform transport source and an explicit-use typed channel](NATIVE_ACCOUNT_TRANSPORT.md) implement this boundary without configuring a recipient or activating the UI.
 
-Actual native activation requires a separate approved implementation and review of the native isolation, credential lifetime, transport, lifecycle cancellation, packaging, server configuration, UI consent/confirmation, and physical-device behavior described below. Passing these TypeScript tests does not establish those properties.
+Actual native activation requires review and platform acceptance of the native isolation, credential lifetime, transport, lifecycle cancellation, packaging, server configuration, UI consent/confirmation, and physical-device behavior described below. Passing these TypeScript tests does not establish those properties.
 
 ## Port and local operations
 
@@ -117,7 +117,7 @@ Errors may omit the body or use only:
 { error: { code: 'sync_conflict', details?: { revision: nonnegativeSafeInteger } } } // only HTTP 409
 ```
 
-Native code must map other upstream codes to the fixed `service_error` code and preserve the HTTP status. It must discard upstream error messages, headers, cookies, arbitrary details, and exception text. This is a deliberate normalized future protocol, not an existing live CloudClient adapter. Current source branches specially only on `csrf_failed` and `sync_conflict`; other user messages depend on status. Validator failures expose only a static `NativeAccountContractError` message and never include input or upstream values. Local failures such as cancellation/timeouts must also use fixed native error codes/messages without private diagnostics.
+Native code must map other upstream codes to the fixed `service_error` code and preserve the HTTP status. It must discard upstream error messages, headers, cookies, arbitrary details, and exception text. This is a deliberate normalized protocol; the typed channel is still unwired to the live CloudClient/UI. Current source branches specially only on `csrf_failed` and `sync_conflict`; other user messages depend on status. Validator failures expose only a static `NativeAccountContractError` message and never include input or upstream values. Local failures such as cancellation/timeouts must also use fixed native error codes/messages without private diagnostics.
 
 ## Fixed JSON and resource budgets
 
@@ -137,7 +137,7 @@ Native code must enforce byte limits while reading the wire, before parsing/brid
 
 ## Required native lifecycle and isolation implementation
 
-A future implementation must enforce these properties independently on both Android and iOS:
+The platform implementation must enforce these properties independently on both Android and iOS; source checks alone do not establish their device behavior:
 
 1. Restrict access to the intended packaged top-level application context. No arbitrary WebView, remote navigation, frame, URL scheme, or injected bridge wrapper may select the service or obtain credential material. Keep network/credential ownership outside JavaScript and shared WebView cookie stores.
 2. Own the authoritative session generation, account identity, current context, token, CSRF binding, pending-request ledger, timeout, absolute expiry and idle deadline in native memory. Do not store bearer tokens, passwords, CSRF data, or private responses in preferences, SQLite, WebView storage, backups, logs, analytics, crash messages, URLs, or clipboard. No implicit restoration after process death.
@@ -172,4 +172,4 @@ The requirement for a custom, narrow, credential-owning account boundary is **th
 
 `now` is an explicit epoch-millisecond integer so session validation is deterministic; the implementation must supply a trusted current clock and enforce idle/absolute lifetime itself. Reviewed commands, capabilities, contexts, sessions and reply data are detached immutable copies. The reply reader revalidates the supplied expected command before correlating the reply.
 
-Run the synthetic contract suite together with the existing native-disablement regression in `src/cloud.test.ts`. Also run TypeScript, lint and `git diff --check`. No native sync, platform build, browser, production credentials or live service calls are required for this contract. Native activation remains a separate, blocked release milestone until a real isolated plugin and its lifecycle/negative-path tests are approved.
+Run the synthetic contract suite together with the existing native-disablement regression in `src/cloud.test.ts`. Also run TypeScript, lint and `git diff --check`. No native sync, platform build, browser, production credentials or live service calls are required for this contract. Native activation remains a separate release milestone until the dedicated channel sources compile and their lifecycle/negative-path behavior is accepted on real platforms.

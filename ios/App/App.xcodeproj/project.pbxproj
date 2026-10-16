@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F10A00000000000000000003 /* FitFlowBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10B00000000000000000003 /* FitFlowBridgeViewController.swift */; };
+		F10A00000000000000000002 /* NativeAccountBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10B00000000000000000002 /* NativeAccountBridge.swift */; };
+		F10A00000000000000000001 /* NativeAccountTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10B00000000000000000001 /* NativeAccountTransport.swift */; };
+		F10A00000000000000000000 /* NativeAccountProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10B00000000000000000000 /* NativeAccountProtocol.swift */; };
 		F17F10010000000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F17F10010000000000000002 /* PrivacyInfo.xcprivacy */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
@@ -20,6 +24,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		F10B00000000000000000003 /* FitFlowBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitFlowBridgeViewController.swift; sourceTree = "<group>"; };
+		F10B00000000000000000002 /* NativeAccountBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccountBridge.swift; sourceTree = "<group>"; };
+		F10B00000000000000000001 /* NativeAccountTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccountTransport.swift; sourceTree = "<group>"; };
+		F10B00000000000000000000 /* NativeAccountProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccountProtocol.swift; sourceTree = "<group>"; };
 		F17F10010000000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
@@ -67,6 +75,10 @@
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
+				F10B00000000000000000000 /* NativeAccountProtocol.swift */,
+				F10B00000000000000000001 /* NativeAccountTransport.swift */,
+				F10B00000000000000000002 /* NativeAccountBridge.swift */,
+				F10B00000000000000000003 /* FitFlowBridgeViewController.swift */,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -163,6 +175,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				F10A00000000000000000000 /* NativeAccountProtocol.swift in Sources */,
+				F10A00000000000000000001 /* NativeAccountTransport.swift in Sources */,
+				F10A00000000000000000002 /* NativeAccountBridge.swift in Sources */,
+				F10A00000000000000000003 /* FitFlowBridgeViewController.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
