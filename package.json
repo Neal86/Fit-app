@@ -3,21 +3,29 @@
   "private": true,
   "version": "3.0.0",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/generate-sw.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
-    "check": "npm run lint && npm run test && npm run build",
+    "check": "npm run lint && npm run test && npm run test:server && npm run test:protocol && npm run build",
     "native:sync": "npm run build && cap sync",
     "native:add:ios": "cap add ios",
     "native:add:android": "cap add android",
     "native:open:ios": "cap open ios",
     "native:open:android": "cap open android",
     "native:run:ios": "npm run native:sync && cap run ios",
-    "native:run:android": "npm run native:sync && cap run android"
+    "native:run:android": "npm run native:sync && cap run android",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
+    "server:build": "tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --outDir .server-build --skipLibCheck src/stateValidation.ts",
+    "server:start": "npm run server:build && node --env-file-if-exists=.env server/main.mjs",
+    "test:server": "npm run server:build && node --test --test-concurrency=1 server/test/*.test.mjs",
+    "test:protocol": "npm run server:build && vitest run --config server/vitest.config.ts"
   },
   "dependencies": {
     "@capacitor/app": "^8.0.0",
@@ -37,6 +45,7 @@
     "@capacitor/cli": "^8.4.2",
     "@capacitor/ios": "^8.4.2",
     "@eslint/js": "^9.34.0",
+    "@playwright/test": "^1.64.1",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^18.3.12",

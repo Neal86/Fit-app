@@ -1,0 +1,11 @@
+.session-grouping { margin-block: 1rem; }
+.group-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 1rem; margin-block: 1rem; }
+.group-fields label { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+.group-fields select, .group-fields input { width: 100%; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.group-rounds { display: grid; gap: .8rem; padding-left: 1.5rem; }
+.group-rounds li { overflow-wrap: anywhere; }
+.group-rounds small, .group-membership { display: block; }
+.session-groups { margin-block: 1rem; }
+.session-groups article { margin-block: .8rem; }
+.group-membership { flex: 0 0 100%; min-width: 0; overflow-wrap: anywhere; }
+.session-grouping button { margin: .3rem .4rem .3rem 0; }

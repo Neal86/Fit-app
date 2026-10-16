@@ -1,7 +1,10 @@
 import type { AppState } from './types'
+import { createNutritionState } from './nutrition'
 
 export const initialState: AppState = {
-  version: 2,
+  version: 4,
+  nutrition: createNutritionState(),
+  planHistory: [],
   profile: {
     name: 'Alex', goal: 'Build muscle', level: 'Intermediate', weeklyTarget: 4,
     weightKg: 72, heightCm: 178, birthYear: 1992, unit: 'metric', onboardingComplete: false,
@@ -52,6 +55,7 @@ export const initialState: AppState = {
       ],
     },
   ],
+  activeSession: null,
   logs: [],
-  weightHistory: [{ id: 'weight-start', date: new Date().toISOString().slice(0, 10), weightKg: 72 }],
+  weightHistory: [],
 }

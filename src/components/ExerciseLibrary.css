@@ -1,0 +1,10 @@
+.exercise-library .library-actions { display: flex; flex-wrap: wrap; gap: .65rem; margin: 1rem 0; }
+.exercise-library .library-entries { display: grid; gap: 1rem; padding: 0; list-style: none; }
+.exercise-library .library-entry { min-width: 0; overflow-wrap: anywhere; }
+.exercise-library .library-entry h2 { margin-bottom: .4rem; }
+.library-content-summary { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(0, 3fr); gap: .35rem 1rem; overflow-wrap: anywhere; }
+.library-content-summary dt { font-weight: 600; }
+.library-content-summary dd { margin: 0; white-space: pre-wrap; }
+.library-origin { display: block; margin: .4rem 0; color: var(--text-secondary, #6b7280); overflow-wrap: anywhere; }
+.library-review { border: 2px solid var(--primary, #6f60e8); padding: 1rem; border-radius: 1rem; }
+@media (max-width: 480px) { .library-content-summary { grid-template-columns: 1fr; gap: .2rem; } .library-content-summary dd { margin-bottom: .5rem; } }
