@@ -11,6 +11,7 @@ let activeHashes = 0
 export const token = () => randomBytes(32).toString('base64url')
 export const digest = value => createHash('sha256').update(value).digest('hex')
 export const csrfFor = value => digest(`fitflow-csrf-v1:${value}`)
+export const nativeCredentialBinding = passwordHash => digest(`fitflow-native-credential-v1:${passwordHash}`)
 export const safeEqual = (left, right) => typeof left === 'string' && typeof right === 'string' && Buffer.byteLength(left) === Buffer.byteLength(right) && timingSafeEqual(Buffer.from(left), Buffer.from(right))
 export function validatePassword(password) {
   if (typeof password !== 'string' || password.length < 12 || password.length > 128 || Buffer.byteLength(password) > 512) fail(400, 'invalid_password', 'Use a password between 12 and 128 characters (at most 512 bytes).')

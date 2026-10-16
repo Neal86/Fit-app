@@ -369,7 +369,7 @@ test('v4 additive migration preserves all existing rows; budgets/blocks/grants s
   const before = Object.fromEntries(tables.map(table => [table, f.db.prepare(`SELECT * FROM ${table}`).all()]))
   f.db.exec('DROP TABLE challenge_blocks; DROP TABLE private_challenges; DROP TABLE challenge_invitation_budgets; DROP TABLE challenge_global_budget; PRAGMA user_version = 4;'); f.close()
   const migrated = openDatabase(path)
-  assert.equal(migrated.prepare('PRAGMA user_version').get().user_version, 5)
+  assert.equal(migrated.prepare('PRAGMA user_version').get().user_version, 6)
   for (const table of tables) assert.deepEqual(migrated.prepare(`SELECT * FROM ${table}`).all(), before[table], table)
   const g = setup({ db: migrated, config: { challengesEnabled: true } })
   let challenge = await connect(g, a, b); await grant(g, a, challenge.id); challenge = await grant(g, b, challenge.id)
@@ -383,7 +383,7 @@ test('v4 additive migration preserves all existing rows; budgets/blocks/grants s
   assert.equal((await counts(i, a, challenge.id)).status, 403)
   assert.deepEqual((await i.request('POST', '/challenges/invitations', { email: b.email, ...window }, a)).body, { status: 'accepted' })
   assert.deepEqual((await overview(i, b)).invitations, []); i.close()
-  const future = new DatabaseSync(path); future.exec('PRAGMA user_version = 6'); future.close()
+  const future = new DatabaseSync(path); future.exec('PRAGMA user_version = 7'); future.close()
   assert.throws(() => openDatabase(path), /newer/)
 })
 

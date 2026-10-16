@@ -25,6 +25,8 @@ When an enabled web service is used:
 
 The SQLite server stores the current snapshot. File access restrictions are not encryption. Real-data hosting requires separately approved processors, encrypted storage/backups, controlled access, retention and recovery arrangements. Those services are not configured by this source change.
 
+A separate disabled native API foundation uses hashed credentials in its own session table, with an eight-hour absolute and thirty-minute idle limit. It shares existing account consent, reset/deletion and abuse controls. Its future native bridge must keep the raw credential in native memory only, without cookies or persistent credential storage. That bridge is not implemented or connected: native cloud accounts remain unavailable, and no native credential or real data has been sent. Local credential clearing would not prove remote revocation. See [native protocol boundaries](server/NATIVE_ACCOUNTS.md).
+
 ## Optional coach collaboration
 
 The separate coaching service is disabled by default. A signed-in user must manually request its availability. An invitation identifies one known account email; it sends no health snapshot and does not claim the person is a qualified coach. The recipient must explicitly accept. Every new accepted relationship starts with no health-data access.

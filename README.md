@@ -133,6 +133,8 @@ Read [server setup and security boundaries](server/README.md) and [account UI in
 
 ## Verification and remaining product scope
 
+The disabled-by-default [native account protocol](server/NATIVE_ACCOUNTS.md) and [unwired bridge contract](docs/NATIVE_ACCOUNT_BRIDGE.md) prepare a separate credential channel without changing web authentication. Native account access remains disabled in the app. A real isolated Android/iOS bridge, platform compilation and device acceptance are still required; synthetic protocol tests do not establish those properties.
+
 Run manual checks with `npm run check`. Browser journeys are in `e2e/`; run `npm run test:e2e:install`, then `npm run test:e2e` after building. `PLAYWRIGHT_CHROMIUM_EXECUTABLE` can select an already installed Chromium. No automatic CI is configured.
 
 See [release readiness](RELEASE_READINESS.md) for passed checks, blocked checks, acceptance criteria, and the remaining production-service/native/AI/commercial scope. The local-first edition is not the complete multi-user commercial product.

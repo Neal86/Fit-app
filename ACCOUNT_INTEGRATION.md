@@ -44,6 +44,16 @@ Implemented endpoints:
 
 A disabled mail adapter or unavailable backend (503) reports the failure honestly; registration does not invent delivery. The backend is responsible for account/password validation, secure email delivery, revocation/deletion, export authorization, secure cookies, rate limits, CSRF, origin checks, and atomic CAS/idempotency.
 
+## Native protocol foundation, not yet connected to the app
+
+The separate `/api/native/v1` server protocol is disabled by default. It is a source foundation for a future isolated native bridge; it does not remove `CloudClient`'s native-platform guard, register a plugin, choose a service destination or send any native request. The existing native account page remains unavailable. See the [native API contract](server/NATIVE_ACCOUNTS.md) and [unwired bridge contract](docs/NATIVE_ACCOUNT_BRIDGE.md).
+
+Native sessions use a separate database table and bearer authentication. They cannot be used as web cookies, and web sessions cannot be used as native bearers. Native requests reject cookies, browser origins and fetch metadata; no web Origin is forged, no native CORS grant is added, and the web cookie/CSRF policy is unchanged. The existing CSRF value binds requests to the current session; because it is derived from the bearer, it is not an independent authentication factor.
+
+The future bridge must retain credentials only in native memory, use one packaged HTTPS recipient, refuse redirects and arbitrary URLs/headers, isolate cookies/cache, and fence token installation and callbacks across cancellation, account changes and backgrounding. Clearing that memory does not establish server logout. No platform implementation or device verification is supplied by a TypeScript contract. The web client's existing-session bootstrap must not be reused blindly: it clears local context before checking the browser cookie, whereas clearing a volatile native credential removes the ability to resume it.
+
+Database schema v6 adds native session storage transactionally while preserving existing accounts, web sessions and snapshots. Older servers refuse the newer schema. Keep a private pre-upgrade database backup for deliberate rollback; never lower `user_version` or reuse native credentials as web sessions. Restoring an earlier backup omits subsequent changes and requires its own recovery decision.
+
 ## Consent and conflict behavior
 
 The consent checkbox names the configured recipient and health categories: training plans/history with saved equipment requirements, profile/weight, nutrition, preferences, and active session. Temporary available-equipment filter choices are not part of AppState and are not transferred. Equipment metadata is included in the owner's full snapshot/export but deliberately omitted by existing coach projection allowlists. Enabling consent sends only the consent decision. Each transfer is manual:

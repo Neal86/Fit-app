@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { ApiError, fail, fields } from './errors.mjs'
-import { POLICY_VERSION, RESET_TTL_MS, SESSION_IDLE_MS, SESSION_TTL_MS, VERIFY_TTL_MS, validateConfig } from './config.mjs'
-import { canonical, csrfFor, digest, hashPassword, normalizeEmail, safeEqual, token, validatePassword, verifyPassword } from './security.mjs'
+import { NATIVE_SESSION_TTL_MS, POLICY_VERSION, RESET_TTL_MS, SESSION_IDLE_MS, SESSION_TTL_MS, VERIFY_TTL_MS, validateConfig } from './config.mjs'
+import { canonical, csrfFor, digest, hashPassword, normalizeEmail, nativeCredentialBinding, safeEqual, token, validatePassword, verifyPassword } from './security.mjs'
 import { pruneExpired, rateLimit, transaction } from './database.mjs'
 import { disabledMailAdapter } from './mail.mjs'
-import { MAX_STATE_BYTES, validateState } from './state.mjs'
+import { validateState } from './state.mjs'
+import { normalizeHeaders, requestBodyLimit, requestContext } from './transport.mjs'
 import { createCoaching, revokeAthleteCoachingConsent } from './coaching.mjs'
 import { createChallenges, revokeAccountChallengeConsent } from './challenges.mjs'
 
-const PREFIX = '/api/v1'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i
 const TOKEN = /^[A-Za-z0-9_-]{43}$/
 const iso = time => time === null ? null : new Date(time).toISOString()
@@ -72,23 +72,27 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
     const raw = matching[0].slice(cookieName.length + 1)
     return TOKEN.test(raw) ? raw : null
   }
-  function auth(headers, touch = true) {
-    const raw = rawCookie(headers)
-    const row = raw && db.prepare('SELECT * FROM sessions WHERE token_hash = ?').get(digest(raw))
+  function auth(context, touch = true) {
+    const { headers, channel, sessionTable } = context
+    const raw = channel === 'native' ? /^Bearer ([A-Za-z0-9_-]{43})$/.exec(headers.authorization || '')?.[1] : rawCookie(headers)
+    const row = raw && db.prepare(`SELECT * FROM ${sessionTable} WHERE token_hash = ?`).get(digest(raw))
     if (!row || row.expires_at <= now() || row.last_seen <= now() - SESSION_IDLE_MS) fail(401, 'unauthenticated', 'Sign in again to continue.')
     const user = userById(row.user_id)
-    if (!user) fail(401, 'unauthenticated', 'Sign in again to continue.')
-    if (touch) db.prepare('UPDATE sessions SET last_seen = ? WHERE token_hash = ?').run(now(), row.token_hash)
-    return { user, session: row, raw }
+    if (!user || channel === 'native' && !safeEqual(row.credential_binding, nativeCredentialBinding(user.password_hash))) fail(401, 'unauthenticated', 'Sign in again to continue.')
+    const authenticated = Object.freeze({ user: Object.freeze(user), session: Object.freeze(row), raw })
+    // Native CSRF binds the caller's current account context, not an independent factor.
+    if (channel === 'native') csrf(headers, authenticated)
+    if (touch) db.prepare(`UPDATE ${sessionTable} SET last_seen = ? WHERE token_hash = ?`).run(now(), row.token_hash)
+    return authenticated
   }
   function csrf(headers, session) {
     if (!safeEqual(headers['x-csrf-token'], csrfFor(session.raw))) fail(403, 'csrf_failed', 'Refresh your session before trying again.')
   }
-  async function reauth(headers, password, user) {
+  async function reauth(context, password, user) {
     validatePassword(password)
     rateLimit(db, `reauth:${user.id}`, 5, 15 * 60 * 1000, now())
     if (!await verifyPassword(password, user.password_hash)) fail(401, 'invalid_credentials', 'Email or password is incorrect.')
-    const current = auth(headers, false)
+    const current = auth(context, false)
     if (current.user.id !== user.id || current.user.password_hash !== user.password_hash) fail(401, 'unauthenticated', 'Sign in again to continue.')
     return current.user
   }
@@ -100,11 +104,11 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
     return row
   }
   const accepted = { status: 'accepted' }
-  async function route(method, path, headers, body, ip) {
+  async function route(method, path, context, body, ip) {
+    const { headers, channel, logicalPath: authPath, sessionTable } = context
     if (method === 'GET' && path === '/health') return { status: 200, body: { status: 'ok' } }
-    if (!path.startsWith(`${PREFIX}/`)) fail(404, 'not_found', 'Endpoint not found.')
+    if (!authPath) fail(404, 'not_found', 'Endpoint not found.')
     rateLimit(db, `all:${ip}`, 180, 60000, now())
-    const authPath = path.slice(PREFIX.length)
     if (method === 'POST' && ['/auth/register', '/auth/login', '/auth/verification/request', '/auth/password-reset/request'].includes(authPath)) {
       fields(body, authPath === '/auth/register' || authPath === '/auth/login' ? ['email', 'password'] : ['email'])
       const email = normalizeEmail(body.email)
@@ -138,19 +142,30 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
         const user = userByEmail(email)
         const loginHash = user?.verified ? user.password_hash : user?.pending_password_hash
         if (!await verifyPassword(body.password, loginHash)) fail(401, 'invalid_credentials', 'Email or password is incorrect.')
-        // Re-read after async hashing: reset/deletion must invalidate in-flight logins.
-        const current = userById(user.id)
-        if (!current || (current.verified ? current.password_hash : current.pending_password_hash) !== loginHash) fail(401, 'invalid_credentials', 'Email or password is incorrect.')
-        if (!current.verified) fail(403, 'email_unverified', 'Verify your email before signing in.')
-        const raw = token(), expires = now() + SESSION_TTL_MS
-        transaction(db, () => {
-          const previous = rawCookie(headers)
+        const raw = token(), lifetime = channel === 'native' ? NATIVE_SESSION_TTL_MS : SESSION_TTL_MS
+        const expires = now() + lifetime
+        const current = transaction(db, () => {
+          // Re-read under the issuance lock after async hashing. Reset/deletion cannot
+          // authorize a stale login or race between credential binding and insertion.
+          const current = userById(user.id)
+          if (!current || (current.verified ? current.password_hash : current.pending_password_hash) !== loginHash) fail(401, 'invalid_credentials', 'Email or password is incorrect.')
+          if (!current.verified) fail(403, 'email_unverified', 'Verify your email before signing in.')
+          const previous = channel === 'web' ? rawCookie(headers) : null
           if (previous) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(digest(previous))
-          // Keep at most 10 sessions per account.
-          db.prepare('DELETE FROM sessions WHERE token_hash IN (SELECT token_hash FROM sessions WHERE user_id = ? ORDER BY last_seen DESC LIMIT -1 OFFSET 9)').run(current.id)
-          db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at,last_seen) VALUES(?,?,?,?)').run(digest(raw), current.id, expires, now())
+          for (const table of ['sessions', 'native_sessions']) db.prepare(`DELETE FROM ${table} WHERE user_id = ? AND (expires_at <= ? OR last_seen <= ?)`).run(current.id, now(), now() - SESSION_IDLE_MS)
+          // A single atomic cap across both channels, with deterministic tie-breaking.
+          const overflow = db.prepare(`SELECT 'sessions' AS source, token_hash, last_seen, expires_at FROM sessions WHERE user_id = ?
+            UNION ALL SELECT 'native_sessions' AS source, token_hash, last_seen, expires_at FROM native_sessions WHERE user_id = ?
+            ORDER BY last_seen DESC, expires_at DESC, source, token_hash LIMIT -1 OFFSET 9`).all(current.id, current.id)
+          for (const row of overflow) db.prepare(`DELETE FROM ${row.source} WHERE token_hash = ?`).run(row.token_hash)
+          if (channel === 'native') db.prepare('INSERT INTO native_sessions(token_hash,user_id,expires_at,last_seen,credential_binding) VALUES(?,?,?,?,?)').run(digest(raw), current.id, expires, now(), nativeCredentialBinding(current.password_hash))
+          else db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at,last_seen) VALUES(?,?,?,?)').run(digest(raw), current.id, expires, now())
+          return current
         })
-        return { status: 200, headers: { 'set-cookie': cookie(raw, SESSION_TTL_MS / 1000) }, body: { user: userView(current), csrfToken: csrfFor(raw), sessionExpiresAt: iso(expires) } }
+        const session = { user: userView(current), csrfToken: csrfFor(raw), sessionExpiresAt: iso(expires) }
+        return channel === 'native'
+          ? { status: 200, body: { session, nativeToken: raw } }
+          : { status: 200, headers: { 'set-cookie': cookie(raw, lifetime / 1000) }, body: session }
       }
       requireMail()
       const user = userByEmail(email)
@@ -169,10 +184,11 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
         db.prepare('UPDATE users SET verified = 1, password_hash = ?, pending_password_hash = NULL, verify_generation = ?, reset_generation = ? WHERE id = ?').run(resetting ? passwordHash : row.password_hash, randomUUID(), randomUUID(), row.user_id)
         db.prepare('DELETE FROM email_tokens WHERE user_id = ?').run(row.user_id)
         db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.user_id)
+        db.prepare('DELETE FROM native_sessions WHERE user_id = ?').run(row.user_id)
       })
       return { status: 200, body: { status: resetting ? 'password_reset' : 'verified' } }
     }
-    const session = auth(headers)
+    const session = auth(context)
     let user = session.user
     if (!(method === 'GET' && authPath === '/auth/session')) csrf(headers, session)
     if (method === 'GET' && authPath === '/auth/session') return { status: 200, body: { user: userView(user), csrfToken: csrfFor(session.raw), sessionExpiresAt: iso(session.session.expires_at) } }
@@ -180,8 +196,8 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
     if (authPath === '/coaching' || authPath.startsWith('/coaching/')) return coaching(method, authPath, body, user.id)
     if (method === 'POST' && authPath === '/auth/logout') {
       fields(body, [])
-      db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(session.session.token_hash)
-      return { status: 204, headers: { 'set-cookie': cookie('', 0) } }
+      db.prepare(`DELETE FROM ${sessionTable} WHERE token_hash = ?`).run(session.session.token_hash)
+      return { status: 204, ...(channel === 'web' ? { headers: { 'set-cookie': cookie('', 0) } } : {}) }
     }
     if (method === 'GET' && authPath === '/consent') return { status: 200, body: consentView(user) }
     if (method === 'PUT' && authPath === '/consent') {
@@ -226,46 +242,51 @@ export function createApp({ db, config, mail = disabledMailAdapter, now = Date.n
     }
     if (method === 'POST' && authPath === '/account/export') {
       fields(body, ['password'])
-      await reauth(headers, body.password, user)
-      user = auth(headers, false).user
+      await reauth(context, body.password, user)
+      user = auth(context, false).user
       return { status: 200, body: { format: 'fitflow-account-export', version: 1, exportedAt: iso(now()), user: userView(user), consent: consentView(user), sync: syncView(user), coaching: coaching.exportAccount(user.id), challenges: challenges.exportAccount(user.id) } }
     }
     if (method === 'DELETE' && authPath === '/account') {
       fields(body, ['password', 'confirmation'])
       if (body.confirmation !== 'DELETE') fail(400, 'confirmation_required', 'Explicit DELETE confirmation is required.')
-      await reauth(headers, body.password, user)
-      user = auth(headers, false).user
+      await reauth(context, body.password, user)
+      user = auth(context, false).user
       transaction(db, () => { db.prepare('DELETE FROM users WHERE id = ?').run(user.id) })
-      return { status: 204, headers: { 'set-cookie': cookie('', 0) } }
+      return { status: 204, ...(channel === 'web' ? { headers: { 'set-cookie': cookie('', 0) } } : {}) }
     }
     fail(404, 'not_found', 'Endpoint not found.')
   }
   return {
     cookieName,
     async handle({ method = 'GET', path = '/', headers = {}, body = '', ip = 'unknown' }) {
-      headers = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]))
       const responseHeaders = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'; frame-ancestors 'none'", vary: 'Origin' }
       if (config.secureCookies) responseHeaders['strict-transport-security'] = 'max-age=31536000'
       try {
+        headers = normalizeHeaders(headers)
+        const context = requestContext(method, path, headers, config)
         if (now() - lastPrune >= 60000) { pruneExpired(db, now()); lastPrune = now() }
-        if (headers.origin && headers.origin !== config.origin || headers['sec-fetch-site'] === 'cross-site') fail(403, 'origin_forbidden', 'This request origin is not allowed.')
-        if (headers.origin === config.origin) Object.assign(responseHeaders, { 'access-control-allow-origin': config.origin, 'access-control-allow-credentials': 'true' })
-        if ((path === `${PREFIX}/challenges` || path.startsWith(`${PREFIX}/challenges/`)) && !config.challengesEnabled) fail(503, 'challenges_disabled', 'Private challenges are disabled.')
-        if ((path === `${PREFIX}/coaching` || path.startsWith(`${PREFIX}/coaching/`)) && !config.coachingEnabled) fail(503, 'coaching_disabled', 'Coach collaboration is disabled.')
+        if (context.channel === 'web') {
+          if (headers.origin && headers.origin !== config.origin || headers['sec-fetch-site'] === 'cross-site') fail(403, 'origin_forbidden', 'This request origin is not allowed.')
+          if (headers.origin === config.origin) Object.assign(responseHeaders, { 'access-control-allow-origin': config.origin, 'access-control-allow-credentials': 'true' })
+        }
+        const logicalPath = context.logicalPath || ''
+        if ((logicalPath === '/challenges' || logicalPath.startsWith('/challenges/')) && !config.challengesEnabled) fail(503, 'challenges_disabled', 'Private challenges are disabled.')
+        if ((logicalPath === '/coaching' || logicalPath.startsWith('/coaching/')) && !config.coachingEnabled) fail(503, 'coaching_disabled', 'Coach collaboration is disabled.')
         if (method === 'OPTIONS') {
           if (headers.origin !== config.origin || !['GET', 'POST', 'PUT', 'DELETE'].includes(headers['access-control-request-method'])) fail(403, 'origin_forbidden', 'This request origin is not allowed.')
           return { status: 204, headers: { ...responseHeaders, 'access-control-allow-methods': 'GET, POST, PUT, DELETE', 'access-control-allow-headers': 'Content-Type, X-Fitflow-Client, X-CSRF-Token' } }
         }
         if (path.includes('?') || path.includes('#')) fail(400, 'invalid_request', 'API query parameters are not supported. Do not send secrets in URLs.')
         const mutating = !['GET', 'HEAD'].includes(method)
-        if (mutating && (headers.origin !== config.origin || headers['x-fitflow-client'] !== 'web')) fail(403, 'origin_forbidden', 'An allowed origin and X-Fitflow-Client header are required.')
+        if (context.channel === 'web' && mutating && (headers.origin !== config.origin || headers['x-fitflow-client'] !== 'web')) fail(403, 'origin_forbidden', 'An allowed origin and X-Fitflow-Client header are required.')
         if (mutating && !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(headers['content-type'] || '')) fail(415, 'unsupported_media_type', 'Use application/json.')
-        const limit = method === 'PUT' && path === `${PREFIX}/sync` ? MAX_STATE_BYTES + 1024 : 8192
+        if (headers['content-encoding'] && headers['content-encoding'] !== 'identity') fail(415, 'unsupported_encoding', 'Compressed request bodies are not supported.')
+        const limit = requestBodyLimit(method, path)
         const raw = typeof body === 'string' ? body : JSON.stringify(body)
         if (Buffer.byteLength(raw) > limit) fail(413, 'body_too_large', 'Request body is too large.')
         let parsed = {}
         try { parsed = raw ? JSON.parse(raw) : {} } catch { fail(400, 'invalid_json', 'Request body is not valid JSON.') }
-        const result = await route(method, path, headers, parsed, ip)
+        const result = await route(method, path, context, parsed, ip)
         return { ...result, headers: { ...responseHeaders, ...result.headers } }
       } catch (error) {
         if (error instanceof ApiError) {

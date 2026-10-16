@@ -14,7 +14,7 @@ export function openDatabase(path = ':memory:') {
     transaction(db, () => {
       // Read under the write lock: concurrent startup must not apply an old migration twice.
       const version = db.prepare('PRAGMA user_version').get().user_version
-      if (version > 5) throw new Error('Database schema is newer than this server.')
+      if (version > 6) throw new Error('Database schema is newer than this server.')
       db.exec(`
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
@@ -140,11 +140,42 @@ export function openDatabase(path = ':memory:') {
           attempts INTEGER NOT NULL CHECK(attempts BETWEEN 0 AND 10000)
         ) STRICT;
         INSERT OR IGNORE INTO challenge_global_budget(id,attempts) VALUES(1,0);
-        PRAGMA user_version = 5;
       `)
+      // Additive v5 -> v6. Never move or reuse browser session credentials.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS native_sessions (
+          token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          expires_at INTEGER NOT NULL, last_seen INTEGER NOT NULL, credential_binding TEXT NOT NULL
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS native_sessions_user ON native_sessions(user_id);
+      `)
+      validateNativeSessionsSchema(db)
+      db.exec('PRAGMA user_version = 6')
     })
   } catch (error) { db.close(); throw error }
   return db
+}
+function validateNativeSessionsSchema(db) {
+  // IF NOT EXISTS is not schema validation. Refuse collisions, partial migrations,
+  // and malformed v6 reopens before committing any DDL or version change.
+  const expected = [
+    ['token_hash', 'TEXT', 1], ['user_id', 'TEXT', 0], ['expires_at', 'INTEGER', 0],
+    ['last_seen', 'INTEGER', 0], ['credential_binding', 'TEXT', 0],
+  ]
+  const columns = db.prepare('PRAGMA table_xinfo(native_sessions)').all()
+  const table = db.prepare("PRAGMA table_list('native_sessions')").all().find(row => row.schema === 'main')
+  const foreignKeys = db.prepare('PRAGMA foreign_key_list(native_sessions)').all()
+  const key = foreignKeys[0]
+  const index = db.prepare('PRAGMA index_info(native_sessions_user)').all()
+  const indexes = db.prepare('PRAGMA index_list(native_sessions)').all()
+  const userIndex = indexes.find(row => row.name === 'native_sessions_user')
+  const primaryIndex = indexes.find(row => row.origin === 'pk')
+  if (!table || table.type !== 'table' || table.strict !== 1 || table.wr !== 0 || columns.length !== expected.length
+    || columns.some((column, i) => column.name !== expected[i][0] || column.type !== expected[i][1] || column.pk !== expected[i][2] || column.notnull !== 1 || column.dflt_value !== null || column.hidden !== 0)
+    || foreignKeys.length !== 1 || key.table !== 'users' || key.from !== 'user_id' || key.to !== 'id' || key.on_delete !== 'CASCADE' || key.on_update !== 'NO ACTION' || key.match !== 'NONE'
+    || indexes.length !== 2 || !userIndex || userIndex.unique !== 0 || userIndex.partial !== 0 || userIndex.origin !== 'c'
+    || !primaryIndex || primaryIndex.unique !== 1 || primaryIndex.partial !== 0
+    || index.length !== 1 || index[0].name !== 'user_id') throw new Error('Native session schema is invalid.')
 }
 export function transaction(db, callback) {
   db.exec('BEGIN IMMEDIATE')
@@ -161,6 +192,7 @@ export function rateLimit(db, key, limit, windowMs, now) {
 }
 export function pruneExpired(db, now) {
   db.prepare('DELETE FROM sessions WHERE expires_at <= ? OR last_seen <= ?').run(now, now - 30 * 60 * 1000)
+  db.prepare('DELETE FROM native_sessions WHERE expires_at <= ? OR last_seen <= ?').run(now, now - 30 * 60 * 1000)
   db.prepare('DELETE FROM email_tokens WHERE expires_at <= ?').run(now)
   db.prepare('DELETE FROM rate_limits WHERE window_end <= ?').run(now)
   // Unverified registrations never receive health data; remove abandoned ones after 7 days.

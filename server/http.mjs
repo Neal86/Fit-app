@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { MAX_STATE_BYTES } from './state.mjs'
+import { normalizeHeaders, requestBodyLimit } from './transport.mjs'
 
 export function createHttpServer(app) {
   let inFlight = 0
@@ -15,7 +15,7 @@ export function createHttpServer(app) {
     res.once('close', release)
     res.once('finish', release)
     const path = req.url || '/'
-    const limit = req.method === 'PUT' && path === '/api/v1/sync' ? MAX_STATE_BYTES + 1024 : 8192
+    const limit = requestBodyLimit(req.method, path)
     const send = response => {
       if (res.destroyed || res.writableEnded) return
       res.writeHead(response.status, response.headers)
@@ -24,11 +24,16 @@ export function createHttpServer(app) {
     const rejectBody = () => {
       send({ status: 413, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', connection: 'close' }, body: { error: { code: 'body_too_large', message: 'Request body is too large.' } } })
     }
-    if (req.headers['content-encoding'] && req.headers['content-encoding'] !== 'identity') {
+    let headers
+    try { headers = normalizeHeaders(req.rawHeaders) } catch {
+      send({ status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', connection: 'close' }, body: { error: { code: 'invalid_request', message: 'Request headers are invalid or ambiguous.' } } })
+      return
+    }
+    if (headers['content-encoding'] && headers['content-encoding'] !== 'identity') {
       send({ status: 415, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', connection: 'close' }, body: { error: { code: 'unsupported_encoding', message: 'Compressed request bodies are not supported.' } } })
       return
     }
-    if (Number(req.headers['content-length'] || 0) > limit) { rejectBody(); return }
+    if (Number(headers['content-length'] || 0) > limit) { rejectBody(); return }
     let size = 0
     const chunks = []
     try {
@@ -37,7 +42,10 @@ export function createHttpServer(app) {
         if (size > limit) { rejectBody(); return }
         chunks.push(chunk)
       }
-      const response = await app.handle({ method: req.method, path, headers: req.headers, body: new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)), ip: req.socket.remoteAddress || 'unknown' })
+      // Trailers can arrive without a Trailer declaration. They must never carry
+      // a second credential/browser context past the initial raw-header guard.
+      if (req.rawTrailers.length) throw new Error('Request trailers are not supported')
+      const response = await app.handle({ method: req.method, path, headers, body: new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)), ip: req.socket.remoteAddress || 'unknown' })
       send(response)
     } catch {
       send({ status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: { error: { code: 'invalid_request', message: 'The request could not be read.' } } })
