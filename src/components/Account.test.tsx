@@ -79,6 +79,23 @@ describe('account and manual sync UI', () => {
     expect(screen.queryByRole('button', { name: 'Review upload' })).not.toBeInTheDocument()
     expect(localStorage.length).toBe(0); expect(sessionStorage.length).toBe(0)
   })
+  it('discloses active and archived library entries before an explicit manual upload', async () => {
+    const current = setup(json(auth), json(consent()), json(consent()), json(snapshot(2, null)), json(consent()), json({ revision: 3, updatedAt: stamp, replayed: false }))
+    const exercise = { name: 'Synthetic personal entry', category: '', sets: 2, reps: '8', restSeconds: 20, notes: 'Manual private note' }
+    current.state.exerciseLibrary = { version: 1, entries: ['active', 'archived'].map((status, index) => ({ id: `private-library-${index}`, revision: 1, status: status as 'active' | 'archived', createdAt: stamp, updatedAt: stamp, exercise: { ...exercise } })) }
+    current.rerender(<Account state={current.state} onRestore={current.onRestore} client={current.client}/>)
+    await login(); await checkAndInspect()
+    expect(screen.getByText(/Transfers include.*active and archived personal library entries with their notes and targets/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Review upload' }))
+    expect(screen.getAllByText(/1 active and 1 archived personal library entries/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/The personal library and copied ancestry are also omitted/)).toBeInTheDocument()
+    expect(current.fetcher).toHaveBeenCalledTimes(4)
+    expect(current.fetcher.mock.calls.every(([, init]) => !String(init?.body).includes('Manual private note'))).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm upload to cloud' }))
+    await screen.findByText(/Cloud upload confirmed at revision 3/)
+    const body = JSON.parse(String(current.fetcher.mock.calls[5][1]?.body))
+    expect(body.state.exerciseLibrary).toEqual(current.state.exerciseLibrary)
+  })
   it('drops stale review after a conflict and requires reinspection and a new choice', async () => {
     const { fetcher } = setup(json(auth), json(consent()), json(consent()), json(snapshot(2)), json(consent()), json({ error: { code: 'sync_conflict', details: { revision: 3 } } }, 409))
     await login(); await checkAndInspect()

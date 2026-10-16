@@ -79,6 +79,24 @@ describe('coaching transport and strict contract', () => {
     expect(() => readCoachingSnapshot(response(granted(['body']), { body: { ...body, measurements: { ...body.measurements, birthYear: 1990 } } }), granted(['body']))).toThrow()
     expect(() => readCoachingSnapshot(response(granted(['nutrition']), { nutrition: { ...base.nutrition, profile: {} } }), granted(['nutrition']))).toThrow()
   })
+  it.each(['current', 'previous', 'log'] as const)('rejects valid private library ancestry in %s coach snapshots', place => {
+    const base = freshState(), origin = { version: 1 as const, entryId: 'private-personal-entry', revision: 2 }
+    base.planHistory = [{ id: 'prior-plan', label: 'Earlier plan', savedAt: stamp, workouts: structuredClone(base.workouts) }]
+    const session = startSession(base.workouts[0], Date.parse(stamp) - 60_000)
+    session.sets[0].completed = true; session.sets[0].reps = 8
+    base.logs = [finishSession(session, Date.parse(stamp))]
+    const record = place === 'current' ? base.workouts[0].exercises[0] : place === 'previous' ? base.planHistory[0].workouts[0].exercises[0] : base.logs[0].exerciseSnapshots![0]
+    record.libraryOrigin = origin
+    expect(parseBackup(JSON.stringify(base))).toEqual(base)
+    const categories = { training: { workouts: base.workouts, logs: base.logs, planHistory: base.planHistory } }
+    expect(() => readCoachingSnapshot(response(granted(), categories), granted())).toThrow('could not be validated')
+    delete record.libraryOrigin
+    expect(readCoachingSnapshot(response(granted(), categories), granted()).categories).toEqual(categories)
+  })
+  it('rejects even an empty private library at either coach category boundary', () => {
+    const base = freshState(), training = { workouts: base.workouts, logs: [], planHistory: [] }, exerciseLibrary = { version: 1, entries: [] }
+    for (const categories of [{ training, exerciseLibrary }, { training: { ...training, exerciseLibrary } }]) expect(() => readCoachingSnapshot(response(granted(), categories), granted())).toThrow('could not be validated')
+  })
   it('rejects a different or stale relationship version in snapshot/feedback responses', async () => {
     expect(() => readCoachingSnapshot({ ...response(), relationshipVersion: 2 }, granted())).toThrow(/changed/)
     expect(() => readCoachingSnapshot({ ...response(), relationshipId: 'other' }, granted())).toThrow(/changed/)

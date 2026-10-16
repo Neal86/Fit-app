@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppState, Workout } from '../types'
 import type { UpdateState } from './WorkoutSession'
 import { restorePlanRevision } from '../planning'
+import LibraryOrigin from './LibraryOrigin'
 import { clearPlanDraft } from '../planDraft'
 
 export default function PlanHistory({ state, update, onRestore }: { state: AppState; update: UpdateState; onRestore: (workout: Workout, restored: AppState) => void }) {
@@ -14,7 +15,7 @@ export default function PlanHistory({ state, update, onRestore }: { state: AppSt
   const snapshot = useMemo(() => JSON.stringify({ workouts: state.workouts, planHistory: state.planHistory }), [state.workouts, state.planHistory])
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const valid = () => mounted.current && epoch.current === renderedEpoch && current.current.state === state && current.current.update === update
-  return <details className="panel plan-history"><summary>Previous plan versions ({state.planHistory?.length ?? 0})</summary><p>The 20 most recent versions are retained on this device and included in backups. Restoring a plan keeps workout history and your current session.</p>{state.planHistory?.length ? <ol>{state.planHistory.map(revision => <li key={revision.id}><div><strong>{revision.label}</strong><small>{new Date(revision.savedAt).toLocaleString()} · {revision.workouts.length} sessions</small><span>{revision.workouts.map(workout => `${workout.day}: ${workout.title}`).join(' · ')}</span></div><button className="secondary-button" onClick={() => {
+  return <details className="panel plan-history"><summary>Previous plan versions ({state.planHistory?.length ?? 0})</summary><p>The 20 most recent versions are retained on this device and included in backups. Restoring a plan keeps workout history and your current session.</p>{state.planHistory?.length ? <ol>{state.planHistory.map(revision => <li key={revision.id}><div><strong>{revision.label}</strong><small>{new Date(revision.savedAt).toLocaleString()} · {revision.workouts.length} sessions</small><span>{revision.workouts.map(workout => `${workout.day}: ${workout.title}`).join(' · ')}</span>{revision.workouts.some(workout => workout.exercises.some(exercise => exercise.libraryOrigin)) && <details><summary>Copied exercise ancestry in this version</summary>{revision.workouts.map(workout => <div key={workout.id}>{workout.exercises.filter(exercise => exercise.libraryOrigin).map(exercise => <div key={exercise.id}><strong>{workout.title}: {exercise.name}</strong><LibraryOrigin origin={exercise.libraryOrigin} /></div>)}</div>)}</details>}</div><button className="secondary-button" onClick={() => {
     if (!valid()) return
     if (!window.confirm('Restore this plan version? Any unfinished editor draft will be discarded. Your current plan will be kept as a previous version.')) return
     let next: AppState | undefined

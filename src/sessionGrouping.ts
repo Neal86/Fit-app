@@ -16,6 +16,7 @@ const stale = () => new Error('This session changed. Cancel and review the group
 const freezeExercise = (exercise: Exercise) => {
   const copy = structuredClone(exercise)
   if (copy.equipment !== undefined) Object.freeze(copy.equipment)
+  if (copy.libraryOrigin !== undefined) Object.freeze(copy.libraryOrigin)
   return Object.freeze(copy)
 }
 function snapshotRounds(session: ActiveSession, rounds: readonly { setIds: readonly string[] }[]): readonly SessionGroupingReviewRound[] {

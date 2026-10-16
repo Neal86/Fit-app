@@ -19,7 +19,7 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 - Explicit saved-plan and session-only supersets/circuits with reviewed exact row mappings, fresh runtime identities, round-rest behavior and immutable historical snapshots
 - Date-filtered/searchable workout history, activity calendar and recorded working-set load summaries
 - Dated body-weight entries and trends; backdated corrections do not replace the latest profile weight
-- Reusable exercise entries from saved plans and starter templates, with category/search filters
+- Persistent user-authored exercise library with reviewed create/edit/archive/restore, revisioned snapshot copies and category/search filters alongside saved plans and starter templates
 - Explicit exercise equipment requirements, temporary available-equipment checks and optional all-required library/schedule filtering, with unknown kept distinct from no equipment
 - Reviewed weekly schedule builder with time limits and reversible previous plan versions
 - Manual food/water diary, user-entered daily targets, edit/delete flows and session-scoped draft recovery
@@ -38,6 +38,8 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 - iOS safe-area and Android full-screen viewport handling
 - Apple privacy manifest and Android secure-network configuration
 - Production Docker image with Nginx SPA fallback, health check, caching, and security headers
+
+See [personal exercise library](docs/EXERCISE_LIBRARY.md) for manual authoring, exact copy reviews, historical ancestry, strict older-reader compatibility and private-transfer boundaries.
 
 See [measurement preferences](docs/MEASUREMENT_UNITS.md) for entry behavior, canonical storage and validation bounds.
 

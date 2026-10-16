@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { Plus, Save, Trash2 } from 'lucide-react'
 import { initialState } from '../data'
 import { uid } from '../session'
+import { freshIdentityFactory } from '../identities'
 import type { AppState, Workout } from '../types'
 import type { UpdateState } from './WorkoutSession'
 import { clearPlanDraft, readPlanDraft, savePlanDraft } from '../planDraft'
 import ExercisePicker from './ExercisePicker'
+import LibraryOrigin from './LibraryOrigin'
+import { materializeLibraryCopy } from '../exerciseLibrary'
 import PlanHistory from './PlanHistory'
 import { copyWorkout, prepareWorkoutForSave, savePlanRevision } from '../planning'
 import { assertPlannedGroupingEdit } from '../plannedGrouping'
@@ -71,6 +74,7 @@ export default function PlanEditor({ state, update, readGeneration }: { state: A
   const available = equipment.enabled ? equipment.available : undefined
   return <section><header className="page-header"><span>Plan builder</span><h1>Make your plan yours</h1><p>Edit the starter templates, schedule sessions, and record the exercises you choose. These are editable templates, not an AI-generated prescription.</p></header>
     <Link className="secondary-button" to="/schedule">Build a weekly schedule</Link>
+    <Link className="secondary-button" to="/exercise-library">Manage your exercise library</Link>
     {dirty && <div className="notice" role="status">Unsaved plan changes are kept in this browser tab. Save to apply them and include them in backups. Closing the tab can discard drafts.</div>}<div className="notice">Changes apply to future sessions. Workout history and an unfinished session’s saved exercise list stay intact.</div>
     {recoveryReview && <div className="notice" role="status">This recovered draft differs from the currently saved workout, “{state.workouts.find(workout => workout.id === selected.id)?.title}”. Saved data may have changed since the draft was created. Review your edits before saving; you’ll be asked to confirm, and the current saved plan will be kept in previous versions. Choosing a saved session discards the draft after confirmation.</div>}
     {!sourceIsCurrent && <p role="alert" className="error-message">Saved data changed while this draft was open. Choose a session to reload the current plan before saving. Your draft has not been applied.</p>}
@@ -87,6 +91,7 @@ export default function PlanEditor({ state, update, readGeneration }: { state: A
       <EquipmentOverview exercises={selected.exercises} available={available} />
       <PlannedGroupingEditor workout={selected} reserved={state} isViewCurrent={viewIsCurrent} isCurrent={() => viewIsCurrent() && sourceIsCurrent} onChange={value => edit(value)} />
       {selected.exercises.map((exercise, index) => <fieldset key={exercise.id}><legend>Exercise {index + 1}</legend>
+        <LibraryOrigin origin={exercise.libraryOrigin} />
         <label>Exercise name<input required maxLength={100} value={exercise.name} onChange={event => edit({ ...selected, exercises: selected.exercises.map(item => item.id === exercise.id ? { ...item, name: event.target.value } : item) })} /></label>
         <div className="form-inline"><label>Sets<input required type="number" min="1" max="20" value={exercise.sets} onChange={event => edit({ ...selected, exercises: selected.exercises.map(item => item.id === exercise.id ? { ...item, sets: Number(event.target.value) } : item) })} /></label>
           <label>Target reps / seconds<input required maxLength={50} value={exercise.reps} onChange={event => edit({ ...selected, exercises: selected.exercises.map(item => item.id === exercise.id ? { ...item, reps: event.target.value } : item) })} /></label>
@@ -102,7 +107,11 @@ export default function PlanEditor({ state, update, readGeneration }: { state: A
         <button type="button" className="secondary-button danger" disabled={selected.exercises.length <= 1} onClick={() => edit({ ...selected, exercises: selected.exercises.filter(item => item.id !== exercise.id) }, listedEmpty.filter(id => id !== exercise.id))}><Trash2 />Remove exercise</button>
       </fieldset>)}
       <button type="button" className="secondary-button" disabled={selected.exercises.length >= 50} onClick={() => edit({ ...selected, exercises: [...selected.exercises, { id: uid(), name: 'Custom exercise', sets: 3, reps: '8–12', restSeconds: 60, category: 'Custom' }] })}><Plus />Add exercise</button>
-      <ExercisePicker workouts={state.workouts} availableEquipment={available} disabled={selected.exercises.length >= 50} onAdd={exercise => edit({ ...selected, exercises: [...selected.exercises, { ...structuredClone(exercise), id: uid() }] })} />
+      <ExercisePicker workouts={state.workouts} state={state} destinationSnapshot={draftSnapshot} destination={`“${selected.title}” on ${selected.day}`} isCurrent={() => viewIsCurrent() && sourceIsCurrent} availableEquipment={available} disabled={selected.exercises.length >= 50} onAdd={(exercise, libraryCopy) => {
+        if (!viewIsCurrent() || !sourceIsCurrent) return false
+        try { const copied = libraryCopy ? materializeLibraryCopy(state, libraryCopy, { reserved: [state, selected] }) : { ...structuredClone(exercise), id: freshIdentityFactory([state, selected, exercise], uid)() }; return edit({ ...selected, exercises: [...selected.exercises, copied] }) }
+        catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to copy this exercise.'); return false }
+      }} />
       {error && <p role="alert" className="error-message">{error}</p>}
       <button className="primary-button" type="submit"><Save />Save workout plan{dirty ? ' *' : ''}</button>
       <button type="button" className="secondary-button danger" disabled={state.workouts.length <= 1 || !state.workouts.some(workout => workout.id === selected.id)} onClick={() => {

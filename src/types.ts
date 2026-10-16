@@ -2,8 +2,16 @@ import type { NutritionState } from './nutrition.js'
 import type { EquipmentId } from './equipment.js'
 export type Goal = 'Build muscle' | 'Lose fat' | 'Improve endurance' | 'Stay active'
 export type Level = 'Beginner' | 'Intermediate' | 'Advanced'
+export type LibraryOrigin = { version: 1; entryId: string; revision: number }
+export type LibraryContent = {
+  name: string; sets: number; reps: string; restSeconds: number; category: string; notes?: string; equipment?: EquipmentId[]
+}
+export type LibraryEntry = {
+  id: string; revision: number; status: 'active' | 'archived'; createdAt: string; updatedAt: string; exercise: LibraryContent
+}
+export type ExerciseLibrary = { version: 1; entries: LibraryEntry[] }
 export type Exercise = {
-  id: string; name: string; sets: number; reps: string; restSeconds: number; category: string; notes?: string; equipment?: EquipmentId[]
+  id: string; name: string; sets: number; reps: string; restSeconds: number; category: string; notes?: string; equipment?: EquipmentId[]; libraryOrigin?: LibraryOrigin
 }
 export type Workout = {
   id: string; title: string; day: string; duration: number; calories: number; difficulty: Level; description: string; exercises: Exercise[]; plannedGrouping?: PlannedGrouping
@@ -26,7 +34,7 @@ export type ActiveSession = {
 export type WorkoutLog = {
   id: string; workoutId: string; title: string; startedAt: string; completedAt: string; duration: number;
   durationSeconds?: number; calories: number; completedExerciseIds: string[]; notes?: string; sets?: ExerciseSet[];
-  exerciseSnapshots?: Pick<Exercise, 'id' | 'name' | 'category'>[]; grouping?: SessionGrouping
+  exerciseSnapshots?: Pick<Exercise, 'id' | 'name' | 'category' | 'libraryOrigin'>[]; grouping?: SessionGrouping
 }
 export type WeightEntry = { id: string; date: string; weightKg: number }
 export type Profile = {
@@ -37,5 +45,5 @@ export type Preferences = { reducedMotion: boolean; soundEnabled: boolean; remin
 export type PlanRevision = { id: string; savedAt: string; label: string; workouts: Workout[] }
 export type AppState = {
   version: 4; profile: Profile; preferences: Preferences; workouts: Workout[]; logs: WorkoutLog[];
-  weightHistory: WeightEntry[]; activeSession: ActiveSession | null; planHistory: PlanRevision[]; nutrition: NutritionState
+  weightHistory: WeightEntry[]; activeSession: ActiveSession | null; planHistory: PlanRevision[]; nutrition: NutritionState; exerciseLibrary?: ExerciseLibrary
 }

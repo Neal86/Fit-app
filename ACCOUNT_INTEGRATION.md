@@ -56,7 +56,7 @@ Database schema v6 adds native session storage transactionally while preserving 
 
 ## Consent and conflict behavior
 
-The consent checkbox names the configured recipient and health categories: training plans/history with saved equipment requirements, profile/weight, nutrition, preferences, and active session. Temporary available-equipment filter choices are not part of AppState and are not transferred. Equipment metadata is included in the owner's full snapshot/export but deliberately omitted by existing coach projection allowlists. Enabling consent sends only the consent decision. Each transfer is manual:
+The consent checkbox names the configured recipient and health categories: training plans/history with saved equipment requirements, active and archived personal library entries with notes/targets and copied ancestry, profile/weight, nutrition, preferences, and active session. Temporary available-equipment filter choices are not part of AppState and are not transferred. Equipment metadata is included in the owner's full snapshot/export but deliberately omitted by existing coach projection allowlists. Enabling consent sends only the consent decision. Each transfer is manual:
 
 1. Explicitly check/enable consent and inspect the latest cloud snapshot
 2. Review a frozen, validated device snapshot for upload, or review the cloud snapshot for restore
@@ -103,3 +103,12 @@ Grouping names, IDs, rounds and rest metadata are not added to the separately co
 The optional `Workout.plannedGrouping` v1 extension is retained in current and historical private plan snapshots. Starting creates fresh runtime row/group/round identities and omits the planned wrapper from the active workout snapshot. Backup, manual upload and own account export preserve both plan definitions and executed grouping; neither starts timers or uploads automatically. Strict older v4 APIs reject new plan definitions, so upgrade compatible readers before transfer and preserve a separate pre-feature backup for deliberate rollback. See [planned grouping](docs/PLANNED_GROUPING.md).
 
 Coach projections omit this field from current and historical plans; the coach client rejects it even though the owner’s parser accepts it. No additional challenge scoring, recipient or sharing category is introduced.
+
+
+### Persistent personal exercise library
+
+The optional version-1 `exerciseLibrary` and captured `libraryOrigin` extension stay in the owner's complete private v4 state. Active and archived records, revision ancestry, equipment, notes and targets survive backup, explicit manual sync and own account export. The consent and transfer review disclose them. No automatic sync, recipient or new permission is introduced. Plan-only restoration leaves the library unchanged.
+
+Earlier strict v4 APIs reject these extensions non-destructively. Upgrade both readers before transferring new copies, and keep separate pre-feature and current backups for a deliberate rollback. Legacy v2/v3 data carrying library metadata is rejected before migration; feature-free legacy data remains supported. Local compact serialized writes and final compact backup exports are bounded by the existing 10 MiB UTF-8 reader limit before persistence/download.
+
+Coach projections retain their positive allowlists and omit the library and origin on current plans, prior plans and historical exercise snapshots. The client independently rejects unexpected metadata. Ordinary names/notes/targets copied into training remain within the existing separately consented training category. Challenge day counts are unchanged and cannot be increased by authoring a library. See [personal library behavior](docs/EXERCISE_LIBRARY.md).

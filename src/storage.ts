@@ -27,6 +27,7 @@ export function saveState(state: AppState, expectedRaw?: string | null): string 
   // Validate before touching existing user data, including programmatic callers.
   parseState(state)
   const serialized = JSON.stringify(state)
+  if (new Blob([serialized]).size > MAX_BACKUP_BYTES) throw new Error('Backup is too large (maximum 10 MB).')
   if (expectedRaw !== undefined && localStorage.getItem(STORAGE_KEY) !== expectedRaw) throw new StorageConflictError()
   localStorage.setItem(STORAGE_KEY, serialized)
   return serialized

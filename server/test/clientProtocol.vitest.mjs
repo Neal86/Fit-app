@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { CloudClient, pausedCloudState } from '../../src/cloud'
 import { CoachingClient } from '../../src/coaching'
 import { freshState, parseBackup } from '../../src/storage'
+import { applyLibraryChange, reviewLibraryCreate, reviewLibraryEdit, reviewLibraryArchive, reviewLibraryCopy, materializeLibraryCopy } from '../../src/exerciseLibrary'
 import { finishSession, startSession, setSessionCompletion } from '../../src/session'
 import { applySessionReplacement, reviewSessionReplacement } from '../../src/sessionReplacement'
 import { applySessionAddition, reviewSessionAddition } from '../../src/sessionAddition'
@@ -456,5 +457,60 @@ describe('saved planned grouping through own account and scoped sharing', () => 
     expect(JSON.stringify(projected)).not.toContain('plannedGrouping')
     expect((await athlete.exportAccount(PASSWORD)).sync.state).toEqual(finished)
     expect((await coach.exportAccount(PASSWORD)).sync.state).toBeNull()
+  })
+})
+
+
+describe('personal exercise library through the real private sync and sharing contract', () => {
+  it('preserves exact ancestry, archived entries and independent session/history snapshots', async () => {
+    const f = service({ coachingEnabled: true })
+    const athlete = (await f.registered('library-athlete@example.test')).client
+    const coach = (await f.registered('library-coach@example.test')).client
+    await athlete.setConsent(true); await athlete.inspectSync()
+    const time = Date.parse('2026-10-15T10:00:00.000Z')
+    const content = { name: 'Manual synthetic movement', category: 'User-authored', sets: 2, reps: '8', restSeconds: 25, notes: 'Copied training note', equipment: [] }
+    let state = freshState()
+    state = applyLibraryChange(state, reviewLibraryCreate(state, content), { now: time })
+    const entryId = state.exerciseLibrary.entries[0].id
+    const first = materializeLibraryCopy(state, reviewLibraryCopy(state, entryId))
+    state = { ...state, workouts: [{ ...state.workouts[0], exercises: [...state.workouts[0].exercises, first] }, ...state.workouts.slice(1)] }
+    state = savePlanRevision(state, state.workouts.map((workout, index) => index === 0 ? { ...workout, title: 'Copied library plan' } : workout), 'Library snapshot', new Date(time))
+    expect(state.planHistory).toHaveLength(1)
+    state = { ...state, activeSession: startSession(state.workouts[0], time + 1_000, { reserved: state }) }
+    const additionToken = reviewLibraryCopy(state, entryId)
+    state = applySessionAddition(state, reviewSessionAddition(state, additionToken.exercise, additionToken))
+    const sourceId = state.activeSession.workout.exercises[0].id
+    const replacementToken = reviewLibraryCopy(state, entryId)
+    state = applySessionReplacement(state, reviewSessionReplacement(state, sourceId, replacementToken.exercise, replacementToken))
+    const captured = structuredClone({ workouts: state.workouts, planHistory: state.planHistory, active: state.activeSession })
+    state = applyLibraryChange(state, reviewLibraryEdit(state, entryId, { ...content, name: 'Private library-only revised label', notes: 'Private unselected note' }), { now: time + 2_000 })
+    state = applyLibraryChange(state, reviewLibraryArchive(state, entryId, true), { now: time + 3_000 })
+    expect(state.exerciseLibrary.entries[0]).toMatchObject({ revision: 2, status: 'archived' })
+    expect(state.workouts).toEqual(captured.workouts); expect(state.planHistory).toEqual(captured.planHistory); expect(state.activeSession).toEqual(captured.active)
+    const own = pausedCloudState(state, time + 4_000)
+    expect(parseBackup(JSON.stringify(own))).toEqual(own)
+    await athlete.upload(own, 0, true)
+    const saved = await athlete.inspectSync()
+    expect(saved.state).toEqual(own); expect((await athlete.exportAccount(PASSWORD)).sync.state).toEqual(own)
+    const a = new CoachingClient(athlete), c = new CoachingClient(coach)
+    await a.invite(coach.session.user.email, true); await c.accept((await c.overview()).invitations[0], true)
+    await a.consent((await a.overview()).relationships[0], ['training'], true)
+    const relationship = (await c.overview()).relationships[0]
+    const projection = await c.snapshot(relationship)
+    expect(JSON.stringify(projection)).not.toMatch(/exerciseLibrary|libraryOrigin|Private library-only revised label|Private unselected note/)
+    expect(JSON.stringify(projection)).toContain('Copied training note')
+    let restored = parseBackup(JSON.stringify(saved.state))
+    const row = restored.activeSession.sets.find(row => row.exerciseId === first.id)
+    row.reps = 8; row.weightKg = 12.123456789; row.completed = true
+    const log = finishSession(restored.activeSession, time + 60_000)
+    expect(log.exerciseSnapshots.filter(exercise => exercise.libraryOrigin).every(exercise => exercise.libraryOrigin.revision === 1)).toBe(true)
+    restored = { ...restored, activeSession: null, logs: [log, ...restored.logs] }
+    await athlete.upload(restored, saved.revision, true)
+    expect((await athlete.inspectSync()).state).toEqual(restored)
+    expect(JSON.stringify(await c.snapshot(relationship))).not.toContain('libraryOrigin')
+    expect((await coach.exportAccount(PASSWORD)).sync.state).toBeNull()
+    await athlete.setConsent(false)
+    await expect(c.snapshot(relationship)).rejects.toMatchObject({ code: 'sharing_unavailable' })
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toBeNull()
   })
 })

@@ -1,18 +1,22 @@
 import { initialState } from './data'
-import type { Exercise, Workout } from './types'
+import type { Exercise, ExerciseLibrary, Workout } from './types'
 import { EQUIPMENT_OPTIONS } from './equipment'
 
-export type CatalogExercise = { key: string; exercise: Exercise; source: string }
-export function exerciseCatalog(workouts: Workout[]): CatalogExercise[] {
+export type CatalogExercise = { key: string; exercise: Exercise; source: string; libraryEntryId?: string }
+export function exerciseCatalog(workouts: Workout[], library?: ExerciseLibrary): CatalogExercise[] {
   const catalog = new Map<string, CatalogExercise>()
   // Include user-edited entries first; only identical descriptive content is deduplicated.
   for (const [source, entries] of [['Your plan', workouts], ['Starter template', initialState.workouts]] as const) {
     for (const workout of entries) for (const exercise of workout.exercises) {
       // Keep unspecified requirements distinct from an explicitly equipment-free entry.
       const equipment = exercise.equipment === undefined ? null : EQUIPMENT_OPTIONS.filter(option => exercise.equipment!.includes(option.id)).map(option => option.id)
-      const key = JSON.stringify([exercise.name.trim().toLowerCase(), exercise.category.trim().toLowerCase(), exercise.notes ?? '', exercise.sets, exercise.reps, exercise.restSeconds, equipment])
+      const key = JSON.stringify([exercise.name.trim().toLowerCase(), exercise.category.trim().toLowerCase(), exercise.notes ?? '', exercise.sets, exercise.reps, exercise.restSeconds, equipment, ...(exercise.libraryOrigin === undefined ? [] : [exercise.libraryOrigin.entryId, exercise.libraryOrigin.revision])])
       if (!catalog.has(key)) catalog.set(key, { key, exercise: structuredClone(exercise), source })
     }
+  }
+  for (const entry of library?.entries ?? []) if (entry.status === 'active') {
+    const key = JSON.stringify(['personal', entry.id, entry.revision])
+    catalog.set(key, { key, libraryEntryId: entry.id, source: 'Personal library · manual entry', exercise: { ...structuredClone(entry.exercise), id: entry.id, libraryOrigin: { version: 1, entryId: entry.id, revision: entry.revision } } })
   }
   return [...catalog.values()].sort((a, b) => a.exercise.name.localeCompare(b.exercise.name))
 }

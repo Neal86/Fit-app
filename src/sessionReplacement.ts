@@ -1,5 +1,6 @@
+import { assertLibrarySelection, type LibraryCopyReview } from './exerciseLibrary'
 import { uid } from './session'
-import { parseState } from './stateValidation'
+import { parseState, validWorkout } from './stateValidation'
 import type { ActiveSession, AppState, Exercise, ExerciseSet } from './types'
 
 export type SessionReplacementGroupImpact = Readonly<{ groupId: string; groupName: string; roundId: string; roundNumber: number; setId: string }>
@@ -12,15 +13,17 @@ export type SessionReplacementReview = Readonly<{
   completedCount: number
   groupImpacts: readonly SessionReplacementGroupImpact[]
 }>
-const sources = new WeakMap<SessionReplacementReview, { session: ActiveSession; snapshot: string }>()
+const sources = new WeakMap<SessionReplacementReview, { session: ActiveSession; snapshot: string; libraryCopyReview?: LibraryCopyReview }>()
 const stale = () => new Error('This session changed. Cancel and review the replacement again.')
 function freezeExercise(exercise: Exercise): Readonly<Exercise> {
   const snapshot = structuredClone(exercise)
   if (snapshot.equipment !== undefined) Object.freeze(snapshot.equipment)
+  if (snapshot.libraryOrigin !== undefined) Object.freeze(snapshot.libraryOrigin)
   return Object.freeze(snapshot)
 }
 
-export function reviewSessionReplacement(state: AppState, sourceExerciseId: string, selected: Exercise): SessionReplacementReview {
+export function reviewSessionReplacement(state: AppState, sourceExerciseId: string, selected: Exercise, libraryCopyReview?: LibraryCopyReview): SessionReplacementReview {
+  if (libraryCopyReview) assertLibrarySelection(state, selected, libraryCopyReview)
   parseState(state)
   const session = state.activeSession
   const source = session?.workout.exercises.find(exercise => exercise.id === sourceExerciseId)
@@ -32,14 +35,14 @@ export function reviewSessionReplacement(state: AppState, sourceExerciseId: stri
   const completedCount = rows.length - removedSets.length
   if (completedCount && session.workout.exercises.length >= 50) throw new Error('Keeping completed work and adding a replacement would exceed 50 exercises. No rows were changed.')
   // Validate the selected entry against the unchanged shared schema, including its 1–20 planned sets.
-  parseState({ ...state, workouts: [{ ...session.workout, exercises: [selected] }] })
+  if (!validWorkout({ ...session.workout, exercises: [selected] })) throw new Error('Backup data is incomplete or contains invalid values.')
   const removedIds = new Set(removedSets.map(set => set.id))
   const groupImpacts = Object.freeze((session.grouping?.groups ?? []).flatMap(group => group.rounds.flatMap((round, index) => round.setIds.filter(id => removedIds.has(id)).map(setId => Object.freeze({ groupId: group.id, groupName: group.name, roundId: round.id, roundNumber: index + 1, setId })))))
   const review = Object.freeze({
     source: freezeExercise(source), replacement: freezeExercise(selected),
     removedSets: Object.freeze(removedSets.map(set => Object.freeze(structuredClone(set)))), completedCount, groupImpacts,
   })
-  sources.set(review, { session, snapshot: JSON.stringify(session) })
+  sources.set(review, { session, snapshot: JSON.stringify(session), libraryCopyReview })
   return review
 }
 
@@ -48,6 +51,7 @@ export function applySessionReplacement(state: AppState, review: SessionReplacem
   const expected = sources.get(review)
   const session = state.activeSession
   if (!expected || session !== expected.session || JSON.stringify(session) !== expected.snapshot) throw stale()
+  if (expected.libraryCopyReview) assertLibrarySelection(state, review.replacement, expected.libraryCopyReview)
   // Recheck capacity and schema at application time; no partial state is returned on failure.
   reviewSessionReplacement(state, review.source.id, review.replacement)
   const reserved = new Set<string>()
@@ -59,7 +63,7 @@ export function applySessionReplacement(state: AppState, review: SessionReplacem
       else collect(child)
     }
   }
-  collect(state); reserved.add(review.replacement.id)
+  collect(state); collect(review.replacement)
   const freshId = () => {
     for (let attempt = 0; attempt < 20; attempt++) {
       const id = makeId()

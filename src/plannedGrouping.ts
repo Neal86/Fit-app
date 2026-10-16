@@ -19,6 +19,7 @@ function assertMetadata(workout: Workout, allowIncompleteSets = false): void {
 function freezeExercise(exercise: Exercise): Readonly<Exercise> {
   const copy = structuredClone(exercise)
   if (copy.equipment !== undefined) Object.freeze(copy.equipment)
+  if (copy.libraryOrigin !== undefined) Object.freeze(copy.libraryOrigin)
   return Object.freeze(copy)
 }
 function snapshotRounds(workout: Workout, rounds: readonly { members: readonly PlannedGroupMember[] }[]): readonly PlannedGroupingReviewRound[] {

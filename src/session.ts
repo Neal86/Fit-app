@@ -46,7 +46,7 @@ export function finishSession(session: ActiveSession, now = Date.now()): Workout
     }).map(exercise => exercise.id),
     sets: structuredClone(session.sets), notes: session.notes,
     ...(session.grouping === undefined ? {} : { grouping: structuredClone(session.grouping) }),
-    exerciseSnapshots: session.workout.exercises.map(({ id, name, category }) => ({ id, name, category })),
+    exerciseSnapshots: session.workout.exercises.map(({ id, name, category, libraryOrigin }) => ({ id, name, category, ...(libraryOrigin === undefined ? {} : { libraryOrigin: structuredClone(libraryOrigin) }) })),
   }
 }
 export function previousSet(logs: WorkoutLog[], exerciseId: string, setNumber: number): ExerciseSet | undefined {

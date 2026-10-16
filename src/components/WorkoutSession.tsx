@@ -17,11 +17,13 @@ import type { SessionGroupingReview, SessionGroupRemovalReview } from '../sessio
 import SessionGrouping from './SessionGrouping'
 import { groupRowLabel } from './sessionGroupLabels'
 import PlannedGroupSummary from './PlannedGroupSummary'
+import type { LibraryCopyReview } from '../exerciseLibrary'
+import LibraryOrigin from './LibraryOrigin'
 
 export type UpdateState = (change: (state: AppState) => AppState, message?: string) => boolean
-type ReplacementFlow = { state: AppState; routeEpoch: number; sourceId: string; sourceName: string; session: ActiveSession; snapshot: string; route: string; generation: number | undefined; review: SessionReplacementReview | null; drafts: Record<string, MeasurementDraft>; draftSnapshot: string; draftGeneration: number }
+type ReplacementFlow = { libraryEpoch: number; librarySnapshot: string; state: AppState; routeEpoch: number; sourceId: string; sourceName: string; session: ActiveSession; snapshot: string; route: string; generation: number | undefined; review: SessionReplacementReview | null; drafts: Record<string, MeasurementDraft>; draftSnapshot: string; draftGeneration: number }
 
-type AdditionFlow = { state: AppState; session: ActiveSession; snapshot: string; route: string; generation: number | undefined; review: SessionAdditionReview | null; draftSnapshot: string; draftGeneration: number }
+type AdditionFlow = { libraryEpoch: number; librarySnapshot: string; state: AppState; session: ActiveSession; snapshot: string; route: string; generation: number | undefined; review: SessionAdditionReview | null; draftSnapshot: string; draftGeneration: number }
 
 type GroupingFlow = { state: AppState; session: ActiveSession; snapshot: string; route: string; routeEpoch: number; generation: number | undefined; review: SessionGroupingReview | null; removal: SessionGroupRemovalReview | null; drafts: Record<string, MeasurementDraft>; draftSnapshot: string; draftGeneration: number }
 
@@ -30,6 +32,11 @@ export default function WorkoutSession({ state, update, readGeneration, persiste
   const navigate = useNavigate()
   const location = useLocation()
   const route = `${location.key}:${location.pathname}:${location.search}:${location.hash}`
+  const librarySnapshot = JSON.stringify(state.exerciseLibrary)
+  const libraryEpoch = useRef(0)
+  const librarySource = useRef({ library: state.exerciseLibrary, snapshot: librarySnapshot })
+  if (librarySource.current.library !== state.exerciseLibrary || librarySource.current.snapshot !== librarySnapshot) libraryEpoch.current++
+  librarySource.current = { library: state.exerciseLibrary, snapshot: librarySnapshot }
   const mounted = useRef(true)
   const replacementBusy = useRef(false)
   const loadEdits = useRef(0)
@@ -154,16 +161,16 @@ export default function WorkoutSession({ state, update, readGeneration, persiste
   const setFlow = (flow: ReplacementFlow | null) => { flowRef.current = flow; setReplacement(flow); setReplacementError('') }
   const validContext = (flow: ReplacementFlow) => {
     const current = currentContext.current
-    return mounted.current && flowRef.current === flow && !groupingRef.current && !additionRef.current && routeEpoch.current === flow.routeEpoch && current.state === flow.state && current.route === flow.route && current.session === flow.session && JSON.stringify(current.session) === flow.snapshot && current.readGeneration?.() === flow.generation && (!flow.review || loadEdits.current === flow.draftGeneration && JSON.stringify(current.loads) === flow.draftSnapshot)
+    return mounted.current && flowRef.current === flow && libraryEpoch.current === flow.libraryEpoch && JSON.stringify(current.state.exerciseLibrary) === flow.librarySnapshot && !groupingRef.current && !additionRef.current && routeEpoch.current === flow.routeEpoch && current.state === flow.state && current.route === flow.route && current.session === flow.session && JSON.stringify(current.session) === flow.snapshot && current.readGeneration?.() === flow.generation && (!flow.review || loadEdits.current === flow.draftGeneration && JSON.stringify(current.loads) === flow.draftSnapshot)
   }
   const openReplacement = (exercise: Exercise, label: string) => {
     if (!session || !viewIsCurrent() || additionRef.current || flowRef.current || groupingRef.current) return
-    setFlow({ state, routeEpoch: routeEpoch.current, sourceId: exercise.id, sourceName: label, session, snapshot: JSON.stringify(session), route, generation: readGeneration?.(), review: null, drafts: {}, draftSnapshot: '', draftGeneration: loadEdits.current })
+    setFlow({ libraryEpoch: libraryEpoch.current, librarySnapshot, state, routeEpoch: routeEpoch.current, sourceId: exercise.id, sourceName: label, session, snapshot: JSON.stringify(session), route, generation: readGeneration?.(), review: null, drafts: {}, draftSnapshot: '', draftGeneration: loadEdits.current })
   }
-  const selectReplacement = (flow: ReplacementFlow, exercise: Exercise) => {
+  const selectReplacement = (flow: ReplacementFlow, exercise: Exercise, libraryCopy?: LibraryCopyReview) => {
     if (!validContext(flow)) { setReplacementError('This review is no longer current. Cancel and start again.'); return }
     try {
-      const review = reviewSessionReplacement(state, flow.sourceId, exercise)
+      const review = reviewSessionReplacement(state, flow.sourceId, exercise, libraryCopy)
       const drafts = Object.fromEntries(review.removedSets.map(set => [set.id, structuredClone(loadDraft(set))]))
       setFlow({ ...flow, review, drafts, draftSnapshot: JSON.stringify(currentContext.current.loads), draftGeneration: loadEdits.current })
     } catch (cause) { setReplacementError(cause instanceof Error ? cause.message : 'Unable to review replacement.') }
@@ -189,16 +196,16 @@ export default function WorkoutSession({ state, update, readGeneration, persiste
   const setAdditionFlow = (flow: AdditionFlow | null) => { additionRef.current = flow; setAddition(flow); setAdditionError('') }
   const validAdditionContext = (flow: AdditionFlow) => {
     const current = currentContext.current
-    return mounted.current && additionRef.current === flow && !flowRef.current && !groupingRef.current && current.state === flow.state && current.route === flow.route && current.session === flow.session && JSON.stringify(current.session) === flow.snapshot && current.readGeneration?.() === flow.generation && (!flow.review || loadEdits.current === flow.draftGeneration && JSON.stringify(current.loads) === flow.draftSnapshot)
+    return mounted.current && additionRef.current === flow && libraryEpoch.current === flow.libraryEpoch && JSON.stringify(current.state.exerciseLibrary) === flow.librarySnapshot && !flowRef.current && !groupingRef.current && current.state === flow.state && current.route === flow.route && current.session === flow.session && JSON.stringify(current.session) === flow.snapshot && current.readGeneration?.() === flow.generation && (!flow.review || loadEdits.current === flow.draftGeneration && JSON.stringify(current.loads) === flow.draftSnapshot)
   }
   const openAddition = () => {
     if (!session || !viewIsCurrent() || flowRef.current || additionRef.current || groupingRef.current) return
-    setAdditionFlow({ state, session, snapshot: JSON.stringify(session), route, generation: readGeneration?.(), review: null, draftSnapshot: '', draftGeneration: loadEdits.current })
+    setAdditionFlow({ libraryEpoch: libraryEpoch.current, librarySnapshot, state, session, snapshot: JSON.stringify(session), route, generation: readGeneration?.(), review: null, draftSnapshot: '', draftGeneration: loadEdits.current })
   }
-  const selectAddition = (flow: AdditionFlow, exercise: Exercise) => {
+  const selectAddition = (flow: AdditionFlow, exercise: Exercise, libraryCopy?: LibraryCopyReview) => {
     if (!validAdditionContext(flow)) { setAdditionError('This review is no longer current. Cancel and start again.'); return }
     try {
-      const review = reviewSessionAddition(state, exercise)
+      const review = reviewSessionAddition(state, exercise, libraryCopy)
       setAdditionFlow({ ...flow, review, draftSnapshot: JSON.stringify(currentContext.current.loads), draftGeneration: loadEdits.current })
     } catch (cause) { setAdditionError(cause instanceof Error ? cause.message : 'Unable to review addition.') }
   }
@@ -305,12 +312,12 @@ export default function WorkoutSession({ state, update, readGeneration, persiste
       const anyCompleted = group.rounds.some(round => round.setIds.some(setId => session.sets.find(set => set.id === setId)?.completed))
       return <article className="panel" key={group.id} aria-label={`Session group ${group.name}`}><h3>{group.name}</h3><p>{group.rounds[0].setIds.length === 2 ? 'Superset' : 'Circuit'} · {group.restSeconds}s round rest · {group.rounds.length} rounds</p><ol className="group-rounds">{group.rounds.map((round, index) => <li key={round.id}><strong>Round {index + 1}: {round.setIds.every(setId => session.sets.find(set => set.id === setId)?.completed) ? 'All rows marked complete' : 'Unfinished'}</strong><ol>{round.setIds.map(setId => { const set = session.sets.find(item => item.id === setId)!; return <li key={setId}>{groupRowLabel(session, set)} · {set.completed ? 'Marked complete' : 'Unfinished'}</li> })}</ol></li>)}</ol><button type="button" className="secondary-button" disabled={anyCompleted || !!replacement || !!addition || !!grouping} onClick={() => openGrouping(group.id)}>Review removal of {group.name}</button><p className="session-note">{anyCompleted ? 'Grouping cannot be removed while any member is currently marked complete. Undo members individually if you choose to remove grouping.' : 'Removal changes grouping metadata only. Existing rows and values remain.'} Saved membership, order, name and rest cannot be edited here.</p></article>
     })}</section>}
-    {addition && <SessionAddition workouts={state.workouts} review={addition.review} stale={!validAdditionContext(addition)} error={additionError} exerciseCount={addition.session.workout.exercises.length} rowCount={addition.session.sets.length}
-      onReview={exercise => selectAddition(addition, exercise)} onCancel={() => { if (mounted.current && additionRef.current === addition) setAdditionFlow(null) }}
+    {addition && <SessionAddition state={state} workouts={state.workouts} review={addition.review} stale={!validAdditionContext(addition)} error={additionError} exerciseCount={addition.session.workout.exercises.length} rowCount={addition.session.sets.length}
+      onReview={(exercise, libraryCopy) => selectAddition(addition, exercise, libraryCopy)} onCancel={() => { if (mounted.current && additionRef.current === addition) setAdditionFlow(null) }}
       onBack={() => { if (validAdditionContext(addition)) setAdditionFlow({ ...addition, review: null, draftSnapshot: '', draftGeneration: loadEdits.current }) }}
       onConfirm={() => confirmAddition(addition)} />}
-    {replacement && <SessionReplacement session={replacement.session} workouts={state.workouts} sourceName={replacement.sourceName} review={replacement.review} drafts={replacement.drafts} stale={!validContext(replacement)} error={replacementError}
-      onSelect={exercise => selectReplacement(replacement, exercise)} onCancel={() => { if (mounted.current && flowRef.current === replacement) setFlow(null) }}
+    {replacement && <SessionReplacement state={state} session={replacement.session} workouts={state.workouts} sourceName={replacement.sourceName} review={replacement.review} drafts={replacement.drafts} stale={!validContext(replacement)} error={replacementError}
+      onSelect={(exercise, libraryCopy) => selectReplacement(replacement, exercise, libraryCopy)} onCancel={() => { if (mounted.current && flowRef.current === replacement) setFlow(null) }}
       onBack={() => { if (validContext(replacement)) setFlow({ ...replacement, review: null, drafts: {}, draftSnapshot: '', draftGeneration: loadEdits.current }) }}
       onConfirm={() => confirmReplacement(replacement)} />}
     <div className="exercise-list">{workout.exercises.map((exercise, exerciseIndex) => {
@@ -320,6 +327,7 @@ export default function WorkoutSession({ state, update, readGeneration, persiste
       const exerciseLabel = duplicateName ? `${exercise.name} (exercise ${exerciseIndex + 1})` : exercise.name
       return <article className="exercise-panel panel" key={exercise.id} aria-label={exerciseLabel}>
         <header><div><h2>{exercise.name}</h2>{duplicateName && <small>Session exercise {exerciseIndex + 1}</small>}<p>{exercise.category} · {exercise.sets} planned × {exercise.reps} · {exercise.restSeconds}s rest{session && ` · ${sets.length} session sets`}</p></div></header>
+        <LibraryOrigin origin={exercise.libraryOrigin} />
         {exercise.notes && <p className="exercise-guidance">{exercise.notes}</p>}
         {session && <><div className="sets-list">{sets.map(set => {
           const last = previousSet(state.logs, exercise.id, set.setNumber)
