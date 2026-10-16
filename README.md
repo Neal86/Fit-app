@@ -16,6 +16,7 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 - Partial-session confirmation and duplicate-save protection
 - Explicit mid-session exercise replacement with review, fresh unfinished rows and preserved completed work/history
 - Reviewed session-only additions from library/custom entries, with fresh blank rows and unchanged plans, completed work and timers
+- Explicit session-only supersets/circuits with selected row identities, round-rest behavior and historical snapshots
 - Date-filtered/searchable workout history, activity calendar and recorded working-set load summaries
 - Dated body-weight entries and trends; backdated corrections do not replace the latest profile weight
 - Reusable exercise entries from saved plans and starter templates, with category/search filters
@@ -41,6 +42,8 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 See [measurement preferences](docs/MEASUREMENT_UNITS.md) for entry behavior, canonical storage and validation bounds.
 
 See [session exercise replacement](docs/SESSION_REPLACEMENT.md) for exactly what changes, what remains intact and stale-review safeguards.
+
+See [session-only grouping](docs/SESSION_GROUPING.md) for explicit row selection, completion/rest behavior, private sharing boundaries and the older-reader compatibility warning. Saved-plan groups are not included.
 
 See [session-only exercise additions](docs/SESSION_ADDITION.md) for library/custom entry review, preserved pending input, capacity limits and history/sharing behavior.
 

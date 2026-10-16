@@ -12,14 +12,17 @@ export type ExerciseSet = {
   id: string; exerciseId: string; setNumber: number; reps: number | null; weightKg: number | null;
   seconds: number | null; rpe: number | null; warmup: boolean; completed: boolean
 }
+export type SessionGroupRound = { id: string; setIds: string[] }
+export type SessionGroup = { id: string; name: string; restSeconds: number; rounds: SessionGroupRound[] }
+export type SessionGrouping = { version: 1; groups: SessionGroup[] }
 export type ActiveSession = {
   id: string; workout: Workout; startedAt: string; elapsedSeconds: number; runningSince: number | null;
-  sets: ExerciseSet[]; notes: string; restUntil: number | null
+  sets: ExerciseSet[]; notes: string; restUntil: number | null; grouping?: SessionGrouping
 }
 export type WorkoutLog = {
   id: string; workoutId: string; title: string; startedAt: string; completedAt: string; duration: number;
   durationSeconds?: number; calories: number; completedExerciseIds: string[]; notes?: string; sets?: ExerciseSet[];
-  exerciseSnapshots?: Pick<Exercise, 'id' | 'name' | 'category'>[]
+  exerciseSnapshots?: Pick<Exercise, 'id' | 'name' | 'category'>[]; grouping?: SessionGrouping
 }
 export type WeightEntry = { id: string; date: string; weightKg: number }
 export type Profile = {

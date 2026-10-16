@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { CloudClient, pausedCloudState } from '../../src/cloud'
 import { CoachingClient } from '../../src/coaching'
 import { freshState, parseBackup } from '../../src/storage'
-import { finishSession, startSession } from '../../src/session'
+import { finishSession, startSession, setSessionCompletion } from '../../src/session'
 import { applySessionReplacement, reviewSessionReplacement } from '../../src/sessionReplacement'
 import { applySessionAddition, reviewSessionAddition } from '../../src/sessionAddition'
+import { applySessionGrouping, reviewSessionGrouping } from '../../src/sessionGrouping'
 import { createApp } from '../app.mjs'
 import { openDatabase } from '../database.mjs'
 
@@ -311,6 +312,71 @@ describe('session-only additions through the real account and scoped-sharing con
     expect(after.categories.training.logs[0]).toEqual(final.logs[0])
     expect(JSON.stringify(after)).not.toContain('"equipment":')
     expect(JSON.stringify(after)).not.toContain(selected.notes)
+    expect((await coach.exportAccount(PASSWORD)).sync.state).toBeNull()
+    await athlete.setConsent(false)
+    await expect(c.snapshot(relationship)).rejects.toMatchObject({ code: 'sharing_unavailable' })
+  })
+})
+
+
+describe('session grouping through own backup, account and scoped-sharing boundaries', () => {
+  it('round-trips exact rows and partial historical groups while keeping private grouping out of coach responses', async () => {
+    const f = service({ coachingEnabled: true })
+    const athlete = (await f.registered('group-athlete@example.test')).client
+    const coach = (await f.registered('group-coach@example.test')).client
+    await athlete.setConsent(true); await athlete.inspectSync()
+    let state = freshState(); state.profile.unit = 'imperial'
+    const time = Date.parse('2026-10-15T10:00:00Z')
+    state.activeSession = startSession(state.workouts[0], time)
+    state.activeSession.elapsedSeconds = 123.5; state.activeSession.runningSince = null
+    state.activeSession.restUntil = time + 60_000
+    const source = structuredClone(state)
+    const movements = state.activeSession.workout.exercises.slice(0, 2)
+    const rounds = [0, 1].map(index => movements.map(exercise => state.activeSession.sets.filter(row => row.exerciseId === exercise.id)[index].id))
+    state = applySessionGrouping(state, reviewSessionGrouping(state, { name: 'Synthetic private group marker', restSeconds: 45, rounds }))
+    expect(state.workouts).toEqual(source.workouts)
+    expect(state.activeSession.sets).toEqual(source.activeSession.sets)
+    const grouping = structuredClone(state.activeSession.grouping)
+    const backup = parseBackup(JSON.stringify(state))
+    expect(backup.activeSession.grouping).toEqual(grouping)
+    expect(backup.activeSession.sets).toEqual(source.activeSession.sets)
+    await athlete.upload(state, 0, true)
+    const saved = await athlete.inspectSync(), expected = pausedCloudState(state)
+    expect(saved.state).toEqual(expected)
+    expect(saved.state.activeSession.grouping).toEqual(grouping)
+    expect(saved.state.activeSession.restUntil).toBeNull()
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toEqual(expected)
+    const a = new CoachingClient(athlete), c = new CoachingClient(coach)
+    await a.invite(coach.session.user.email, true)
+    await c.accept((await c.overview()).invitations[0], true)
+    await a.consent((await a.overview()).relationships[0], ['training'], true)
+    const relationship = (await c.overview()).relationships[0]
+    expect(JSON.stringify(await c.snapshot(relationship))).not.toContain('Synthetic private group marker')
+
+    let restored = parseBackup(JSON.stringify(saved.state))
+    // Complete only the first round, in the opposite member order. The second round remains partial.
+    for (const [index, id] of [...rounds[0]].reverse().entries()) {
+      restored.activeSession.sets.find(row => row.id === id).reps = 8
+      restored = setSessionCompletion(restored, id, true, 21.123456789, time + 150_000 + index)
+    }
+    expect(restored.activeSession.restUntil).toBe(time + 195_001)
+    const finished = finishSession(restored.activeSession, time + 300_000)
+    expect(finished.grouping).toEqual(grouping)
+    expect(finished.sets.filter(row => row.completed)).toHaveLength(2)
+    expect(finished.grouping.groups[0].rounds[1].setIds.every(id => !finished.sets.find(row => row.id === id).completed)).toBe(true)
+    restored.logs = [finished]; restored.activeSession = null
+    restored.workouts[0].exercises[0].name = 'Changed future plan label'
+    expect(finished.exerciseSnapshots.find(exercise => exercise.id === movements[0].id).name).toBe(movements[0].name)
+    await athlete.upload(restored, saved.revision, true)
+    const final = (await athlete.inspectSync()).state
+    expect(final).toEqual(restored)
+    expect(parseBackup(JSON.stringify(final))).toEqual(final)
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toEqual(final)
+    const projected = (await c.snapshot(relationship)).categories.training
+    const projectedLog = structuredClone(finished); delete projectedLog.grouping
+    expect(projected.logs).toEqual([projectedLog])
+    expect(JSON.stringify(projected)).not.toContain('grouping')
+    expect(JSON.stringify(projected)).not.toContain('Synthetic private group marker')
     expect((await coach.exportAccount(PASSWORD)).sync.state).toBeNull()
     await athlete.setConsent(false)
     await expect(c.snapshot(relationship)).rejects.toMatchObject({ code: 'sharing_unavailable' })

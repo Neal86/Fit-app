@@ -96,8 +96,8 @@ export function readCoachingSnapshot(value: unknown, relationship: CoachingRelat
       if (!exact(training, ['workouts', 'logs', 'planHistory'])) throw invalid()
       const parsed = parseState({ ...validationBase(), ...training })
       // The saved-state schema is broader than the separately consented coach projection.
-      // Equipment is retained in private cloud copies, never in coach category responses.
-      if ([...parsed.workouts, ...parsed.planHistory.flatMap(revision => revision.workouts)].some(workout => workout.exercises.some(exercise => Object.hasOwn(exercise, 'equipment')))) throw invalid()
+      // Equipment and session grouping stay in private cloud copies, never coach responses.
+      if ([...parsed.workouts, ...parsed.planHistory.flatMap(revision => revision.workouts)].some(workout => workout.exercises.some(exercise => Object.hasOwn(exercise, 'equipment'))) || parsed.logs.some(log => Object.hasOwn(log, 'grouping'))) throw invalid()
       categories.training = { workouts: parsed.workouts, logs: parsed.logs, planHistory: parsed.planHistory }
     }
     if (Object.hasOwn(value.categories, 'body')) {

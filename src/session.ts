@@ -1,4 +1,5 @@
-import type { ActiveSession, ExerciseSet, Workout, WorkoutLog } from './types'
+import { parseState } from './stateValidation'
+import type { ActiveSession, AppState, ExerciseSet, Workout, WorkoutLog } from './types'
 
 export const uid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
 export const localDate = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -31,6 +32,7 @@ export function finishSession(session: ActiveSession, now = Date.now()): Workout
       return sets.length > 0 && sets.every(set => set.completed)
     }).map(exercise => exercise.id),
     sets: structuredClone(session.sets), notes: session.notes,
+    ...(session.grouping === undefined ? {} : { grouping: structuredClone(session.grouping) }),
     exerciseSnapshots: session.workout.exercises.map(({ id, name, category }) => ({ id, name, category })),
   }
 }
@@ -50,4 +52,30 @@ export function weekStart(now = new Date()): number {
   start.setHours(0, 0, 0, 0)
   start.setDate(start.getDate() - (start.getDay() + 6) % 7)
   return start.getTime()
+}
+
+/** Desired-state completion is safe to retry and never derives timer events on hydration. */
+export function setSessionCompletion(state: AppState, setId: string, completed: boolean, weightKg: number | null, now = Date.now()): AppState {
+  parseState(state)
+  const session = state.activeSession
+  const row = session?.sets.find(set => set.id === setId)
+  if (!session || !row || typeof completed !== 'boolean') throw new Error('This session changed. Review the set again.')
+  if (row.completed === completed) return state
+  if (weightKg !== null && (typeof weightKg !== 'number' || !Number.isFinite(weightKg) || weightKg < 0 || weightKg > 1000)) throw new Error('Load must be blank or between 0 and 1000 kg.')
+  const exercise = session.workout.exercises.find(exercise => exercise.id === row.exerciseId)!
+  if (completed && !((/sec/i.test(exercise.reps) ? row.seconds : row.reps) ?? 0)) throw new Error('Enter positive seconds or reps before completing this set.')
+  let restUntil = session.restUntil
+  if (completed) {
+    const group = session.grouping?.groups.find(group => group.rounds.some(round => round.setIds.includes(setId)))
+    const round = group?.rounds.find(round => round.setIds.includes(setId))
+    const startsRest = !group || group.restSeconds > 0 && round!.setIds.every(id => id === setId || session.sets.find(set => set.id === id)!.completed)
+    if (startsRest) {
+      const seconds = group?.restSeconds ?? exercise.restSeconds
+      if (!Number.isFinite(now) || now < 0 || now + seconds * 1000 > 8640000000000000) throw new Error('The rest start time is invalid.')
+      restUntil = now + seconds * 1000
+    }
+  }
+  const next: AppState = { ...state, activeSession: structuredClone({ ...session, restUntil, sets: session.sets.map(set => set.id === setId ? { ...set, completed, weightKg } : set) }) }
+  parseState(next)
+  return next
 }

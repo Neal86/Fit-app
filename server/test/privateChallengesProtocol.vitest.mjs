@@ -4,6 +4,7 @@ import { PrivateChallengeClient } from '../../src/privateChallenges'
 import { freshState } from '../../src/storage'
 import { finishSession, startSession } from '../../src/session'
 import { applySessionAddition, reviewSessionAddition } from '../../src/sessionAddition'
+import { applySessionGrouping, reviewSessionGrouping } from '../../src/sessionGrouping'
 import { createApp } from '../app.mjs'
 import { openDatabase } from '../database.mjs'
 
@@ -161,4 +162,40 @@ describe('private challenge real client/server protocol, synthetic records only'
     expect(JSON.stringify(peer)).not.toContain(movement.name)
     expect(Object.keys(peer).sort()).toEqual(Object.keys(before).sort())
   })
+
+  it('counts saved positive rows without exposing or adding credit for group labels and rounds', async () => {
+    const f = service(), a = await f.account('group-count-a@example.test'), b = await f.account('group-count-b@example.test')
+    const window = { startDate: day(f.now - 6 * 86_400_000), endDate: day(f.now) }
+    const time = Date.parse(`${day(f.now - 86_400_000)}T12:00:00Z`)
+    let state = freshState()
+    state.activeSession = startSession(state.workouts[0], time - 60_000)
+    state.activeSession.runningSince = null
+    const exercises = state.activeSession.workout.exercises.slice(0, 2)
+    const rounds = [0, 1].map(index => exercises.map(exercise => state.activeSession.sets.filter(row => row.exerciseId === exercise.id)[index].id))
+    state = applySessionGrouping(state, reviewSessionGrouping(state, { name: 'Synthetic private count marker', restSeconds: 0, rounds }))
+    await a.cloud.setConsent(true); await a.cloud.inspectSync(); await a.cloud.upload(state, 0, true)
+    await b.cloud.setConsent(true)
+    await a.challenges.invite(b.cloud.session.user.email, window, true)
+    await b.challenges.accept((await b.challenges.overview()).invitations[0], true)
+    await a.challenges.consent((await a.challenges.overview()).challenges[0], true)
+    await b.challenges.consent((await b.challenges.overview()).challenges[0], true)
+    const mine = (await a.challenges.overview()).challenges[0]
+    expect((await a.challenges.counts(mine)).ownRecordedDays).toBe(0)
+    const saved = await a.cloud.inspectSync()
+    const restored = saved.state
+    const row = restored.activeSession.sets.find(item => item.id === rounds[0][0])
+    row.reps = 8; row.completed = true
+    const partial = finishSession(restored.activeSession, time)
+    restored.logs = [partial]; restored.activeSession = null
+    await a.cloud.upload(restored, saved.revision, true)
+    const counts = await a.challenges.counts(mine)
+    expect(counts).toEqual({ challengeId: mine.id, challengeVersion: mine.version, metric: 'recorded_training_days', selfReported: true, ownRecordedDays: 1, peerRecordedDays: null })
+    const theirs = (await b.challenges.overview()).challenges[0]
+    const peer = await b.challenges.counts(theirs)
+    expect(peer.peerRecordedDays).toBe(1)
+    expect(Object.keys(peer).sort()).toEqual(Object.keys(counts).sort())
+    expect(JSON.stringify(peer)).not.toContain('group'); expect(JSON.stringify(peer)).not.toContain('round')
+    expect((await a.cloud.inspectSync()).state.logs[0].grouping).toEqual(partial.grouping)
+  })
+
 })

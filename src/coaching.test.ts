@@ -4,6 +4,7 @@ import { CloudClient } from './cloud'
 import { COACHING_POLICY, CoachingClient, coachingFeedbackText, readCoachingSnapshot, readOverview, readRelationship } from './coaching'
 import type { CoachingRelationship } from './coaching'
 import { freshState } from './storage'
+import { finishSession, startSession } from './session'
 
 const endpoint = 'https://app.example.test/api/v1'
 const stamp = '2026-10-15T12:00:00.000Z'
@@ -93,6 +94,18 @@ describe('coaching transport and strict contract', () => {
       const categories = { training: { workouts: base.workouts, logs: base.logs, planHistory: base.planHistory } }
       expect(() => readCoachingSnapshot(response(granted(), categories), granted())).toThrow('could not be validated')
     }
+  })
+  it.each([undefined, null, { version: 1, groups: [] }, 'valid'])('rejects session grouping %j from coach training logs, including valid private metadata', grouping => {
+    const base = freshState()
+    const session = startSession(base.workouts[0], Date.parse(stamp) - 60_000)
+    const rows = [session.sets[0], session.sets.find(row => row.exerciseId !== session.sets[0].exerciseId)!]
+    rows[0].completed = true; rows[0].reps = 8
+    const log = finishSession(session, Date.parse(stamp))
+    Object.assign(log, { grouping: grouping === 'valid' ? { version: 1, groups: [{ id: 'private-group', name: 'Private grouping marker', restSeconds: 35, rounds: [{ id: 'private-round', setIds: rows.map(row => row.id) }] }] } : grouping })
+    const categories = { training: { workouts: base.workouts, logs: [log], planHistory: [] } }
+    expect(() => readCoachingSnapshot(response(granted(), categories), granted())).toThrow('could not be validated')
+    delete (log as unknown as Record<string, unknown>).grouping
+    expect(readCoachingSnapshot(response(granted(), categories), granted()).categories.training?.logs).toEqual([log])
   })
   it('does not retry conflicts or failed writes and reports disabled service truthfully', async () => {
     const { api, fetcher } = await setup(json({ error: { code: 'coaching_conflict' } }, 409), json({ error: { code: 'coaching_disabled' } }, 503))
