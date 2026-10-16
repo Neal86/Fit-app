@@ -48,7 +48,7 @@ function App() {
   return <div className="app-shell"><Sidebar /><main className="main-content">{error && <div className="error-banner" role="alert">{error}</div>}<Routes>
     <Route path="/" element={<Dashboard state={state} />} />
     <Route path="/workouts" element={<Workouts workouts={state.workouts} />} />
-    <Route path="/workouts/:id" element={<WorkoutSession state={state} update={update} readGeneration={() => stateGeneration.current} />} />
+    <Route path="/workouts/:id" element={<WorkoutSession state={state} update={update} readGeneration={() => stateGeneration.current} persistenceErrorAnnounced={!!error} />} />
     <Route path="/plan" element={<PlanEditor state={state} update={update} readGeneration={() => stateGeneration.current} />} />
     <Route path="/schedule" element={<ScheduleBuilder state={state} update={update} readGeneration={() => stateGeneration.current} />} />
     <Route path="/nutrition" element={<Nutrition state={state.nutrition} onUpdate={change => update(current => ({ ...current, nutrition: change(current.nutrition) }))} />} />

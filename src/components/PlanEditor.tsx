@@ -7,7 +7,9 @@ import type { UpdateState } from './WorkoutSession'
 import { clearPlanDraft, readPlanDraft, savePlanDraft } from '../planDraft'
 import ExercisePicker from './ExercisePicker'
 import PlanHistory from './PlanHistory'
-import { savePlanRevision } from '../planning'
+import { copyWorkout, prepareWorkoutForSave, savePlanRevision } from '../planning'
+import { assertPlannedGroupingEdit } from '../plannedGrouping'
+import PlannedGroupingEditor from './PlannedGroupingEditor'
 import { Link } from 'react-router-dom'
 import { AvailableEquipment, EquipmentOverview, EquipmentRequirements, EquipmentStatus, type EquipmentSelection } from './EquipmentControls'
 import { usePlanningGuard } from './usePlanningGuard'
@@ -35,8 +37,10 @@ export default function PlanEditor({ state, update, readGeneration }: { state: A
     return () => window.removeEventListener('beforeunload', beforeUnload)
   }, [dirty, selected])
   const edit = (value: Workout, pending = listedEmpty) => {
-    if (!viewIsCurrent()) return
-    guard.invalidate(); setSelected(value); setListedEmpty(pending); setDirty(true); setError('')
+    if (!viewIsCurrent()) return false
+    try { assertPlannedGroupingEdit(selected, value) }
+    catch (cause) { guard.invalidate(); setError(cause instanceof Error ? cause.message : 'Remove the affected planned groups before changing their rows.'); return false }
+    guard.invalidate(); setSelected(value); setListedEmpty(pending); setDirty(true); setError(''); return true
   }
   const choose = (workout: Workout) => {
     if (!viewIsCurrent()) return false
@@ -52,9 +56,9 @@ export default function PlanEditor({ state, update, readGeneration }: { state: A
     const previous = state.workouts.find(workout => workout.id === selected.id)
     if (recoveryReview && previous && !window.confirm(`Apply this recovered draft to the currently saved “${previous.title}”? Saved data may have changed since this draft was created. Your current saved plan will be kept in previous versions.`)) return
     if (!viewIsCurrent()) return
-    const next = { ...structuredClone(selected), exercises: selected.exercises.map(exercise => previous?.exercises.some(old => old.id === exercise.id && old.name !== exercise.name) ? { ...structuredClone(exercise), id: uid() } : structuredClone(exercise)) }
     let savedState: AppState | undefined
     try {
+      const next = prepareWorkoutForSave(selected, previous, { reserved: state })
       if (guard.commit(update, current => {
         savedState = savePlanRevision(current, current.workouts.some(workout => workout.id === selected.id) ? current.workouts.map(workout => workout.id === selected.id ? next : workout) : [...current.workouts, next], `Before editing ${selected.title}`)
         return savedState
@@ -72,7 +76,7 @@ export default function PlanEditor({ state, update, readGeneration }: { state: A
     {!sourceIsCurrent && <p role="alert" className="error-message">Saved data changed while this draft was open. Choose a session to reload the current plan before saving. Your draft has not been applied.</p>}
     <AvailableEquipment value={equipment} onChange={value => { if (!viewIsCurrent()) return; guard.invalidate(); setEquipment(value) }} />
     <div className="plan-layout"><aside className="panel plan-picker"><h2>Your sessions</h2>{state.workouts.map(workout => <button className={selected.id === workout.id ? 'primary-button' : 'secondary-button'} key={workout.id} onClick={() => choose(workout)}>{workout.day}: {workout.title}</button>)}
-      <h3>Add from template</h3>{initialState.workouts.map(workout => <button className="secondary-button" key={workout.id} disabled={state.workouts.length >= 100} onClick={() => { if (choose({ ...structuredClone(workout), id: uid(), title: `${workout.title} copy`, exercises: workout.exercises.map(exercise => ({ ...structuredClone(exercise), id: uid() })) })) setDirty(true) }}><Plus />{workout.title}</button>)}
+      <h3>Add from template</h3>{initialState.workouts.map(workout => <button className="secondary-button" key={workout.id} disabled={state.workouts.length >= 100} onClick={() => { try { if (choose({ ...copyWorkout(workout, { reserved: state }), title: `${workout.title} copy` })) setDirty(true) } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to copy the template.') } }}><Plus />{workout.title}</button>)}
     </aside><form className="panel form plan-form" onSubmit={event => { event.preventDefault(); save() }}>
       <label>Workout title<input required maxLength={150} value={selected.title} onChange={event => edit({ ...selected, title: event.target.value })} /></label>
       <label>Scheduled day<select value={selected.day} onChange={event => edit({ ...selected, day: event.target.value })}>{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday','Any day'].map(day => <option key={day}>{day}</option>)}</select></label>
@@ -81,6 +85,7 @@ export default function PlanEditor({ state, update, readGeneration }: { state: A
       <label>Estimated calories (optional estimate)<input required type="number" min="0" max="10000" value={selected.calories} onChange={event => edit({ ...selected, calories: Number(event.target.value) })} /></label>
       <label>Description<textarea maxLength={2000} value={selected.description} onChange={event => edit({ ...selected, description: event.target.value })} /></label>
       <EquipmentOverview exercises={selected.exercises} available={available} />
+      <PlannedGroupingEditor workout={selected} reserved={state} isViewCurrent={viewIsCurrent} isCurrent={() => viewIsCurrent() && sourceIsCurrent} onChange={value => edit(value)} />
       {selected.exercises.map((exercise, index) => <fieldset key={exercise.id}><legend>Exercise {index + 1}</legend>
         <label>Exercise name<input required maxLength={100} value={exercise.name} onChange={event => edit({ ...selected, exercises: selected.exercises.map(item => item.id === exercise.id ? { ...item, name: event.target.value } : item) })} /></label>
         <div className="form-inline"><label>Sets<input required type="number" min="1" max="20" value={exercise.sets} onChange={event => edit({ ...selected, exercises: selected.exercises.map(item => item.id === exercise.id ? { ...item, sets: Number(event.target.value) } : item) })} /></label>

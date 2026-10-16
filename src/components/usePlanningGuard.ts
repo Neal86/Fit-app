@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { AppState } from '../types'
 import type { UpdateState } from './WorkoutSession'
@@ -16,10 +16,10 @@ export function usePlanningGuard(state: AppState, readGeneration?: () => number)
   const renderedEpoch = epoch.current
   const generation = readGeneration?.()
   const [, render] = useReducer(value => value + 1, 0)
-  const snapshot = useMemo(() => JSON.stringify(state.workouts), [state.workouts])
+  const snapshot = JSON.stringify(state.workouts)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  const isCurrent = () => mounted.current && epoch.current === renderedEpoch && current.current.route === route && current.current.state === state && current.current.readGeneration?.() === generation
-  const invalidate = () => { epoch.current += 1 }
+  const isCurrent = () => mounted.current && epoch.current === renderedEpoch && current.current.route === route && current.current.state === state && current.current.readGeneration?.() === generation && JSON.stringify(current.current.state.workouts) === snapshot
+  const invalidate = () => { epoch.current += 1; if (mounted.current) render() }
   const commit = (update: UpdateState, change: (value: AppState) => AppState, message: string, valid = () => true) => {
     let invoked = false
     let settled = false

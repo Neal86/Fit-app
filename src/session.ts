@@ -1,4 +1,5 @@
-import { parseState } from './stateValidation'
+import { parseState, validWorkout } from './stateValidation'
+import { freshIdentityFactory, type IdentityOptions } from './identities'
 import type { ActiveSession, AppState, ExerciseSet, Workout, WorkoutLog } from './types'
 
 export const uid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
@@ -7,15 +8,27 @@ export const formatTime = (seconds: number) => `${String(Math.floor(seconds / 60
 export function elapsedSeconds(session: ActiveSession, now = Date.now()): number {
   return Math.max(0, session.elapsedSeconds + (session.runningSince === null ? 0 : Math.max(0, now - session.runningSince) / 1000))
 }
-export function startSession(workout: Workout, now = Date.now()): ActiveSession {
-  return {
-    id: uid(), workout: structuredClone(workout), startedAt: new Date(now).toISOString(), elapsedSeconds: 0,
+export function startSession(workout: Workout, now = Date.now(), options: IdentityOptions = {}): ActiveSession {
+  if (!validWorkout(workout)) throw new Error('The workout plan contains invalid fields or grouping. Review the saved plan before starting.')
+  if (!Number.isFinite(now) || now < 0 || now > 8640000000000000) throw new Error('The session start time is invalid.')
+  const startedAt = new Date(now).toISOString()
+  if (!/^\d{4}-/.test(startedAt)) throw new Error('The session start time is invalid.')
+  const freshId = freshIdentityFactory([workout, options.reserved], options.makeId ?? uid)
+  const snapshot = structuredClone(workout)
+  delete snapshot.plannedGrouping
+  const session: ActiveSession = {
+    id: freshId(), workout: snapshot, startedAt, elapsedSeconds: 0,
     runningSince: now, notes: '', restUntil: null,
     sets: workout.exercises.flatMap(exercise => Array.from({ length: exercise.sets }, (_, index) => ({
-      id: uid(), exerciseId: exercise.id, setNumber: index + 1, reps: null, weightKg: null,
+      id: freshId(), exerciseId: exercise.id, setNumber: index + 1, reps: null, weightKg: null,
       seconds: null, rpe: null, warmup: false, completed: false,
     }))),
   }
+  if (workout.plannedGrouping) session.grouping = { version: 1, groups: workout.plannedGrouping.groups.map(group => ({
+    id: freshId(), name: group.name, restSeconds: group.restSeconds,
+    rounds: group.rounds.map(round => ({ id: freshId(), setIds: round.members.map(member => session.sets.find(set => set.exerciseId === member.exerciseId && set.setNumber === member.setNumber)!.id) })),
+  })) }
+  return session
 }
 export function toggleSession(session: ActiveSession, now = Date.now()): ActiveSession {
   return { ...session, elapsedSeconds: elapsedSeconds(session, now), runningSince: session.runningSince === null ? now : null }

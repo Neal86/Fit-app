@@ -6,8 +6,12 @@ export type Exercise = {
   id: string; name: string; sets: number; reps: string; restSeconds: number; category: string; notes?: string; equipment?: EquipmentId[]
 }
 export type Workout = {
-  id: string; title: string; day: string; duration: number; calories: number; difficulty: Level; description: string; exercises: Exercise[]
+  id: string; title: string; day: string; duration: number; calories: number; difficulty: Level; description: string; exercises: Exercise[]; plannedGrouping?: PlannedGrouping
 }
+export type PlannedGroupMember = { exerciseId: string; setNumber: number }
+export type PlannedGroupRound = { id: string; members: PlannedGroupMember[] }
+export type PlannedGroup = { id: string; name: string; restSeconds: number; rounds: PlannedGroupRound[] }
+export type PlannedGrouping = { version: 1; groups: PlannedGroup[] }
 export type ExerciseSet = {
   id: string; exerciseId: string; setNumber: number; reps: number | null; weightKg: number | null;
   seconds: number | null; rpe: number | null; warmup: boolean; completed: boolean

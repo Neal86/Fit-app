@@ -8,6 +8,7 @@ import type { UpdateState } from './WorkoutSession'
 import { AvailableEquipment, EquipmentOverview, type EquipmentSelection } from './EquipmentControls'
 import { usePlanningGuard } from './usePlanningGuard'
 import './ScheduleBuilder.css'
+import PlannedGroupSummary from './PlannedGroupSummary'
 
 type Inputs = { minutes: number; choices: ScheduleChoice[]; equipment: EquipmentSelection; matchedOnly: boolean }
 type Review = { workouts: Workout[]; snapshot: string; inputs: string; source: AppState; sourceSnapshot: string; generation: number | undefined; route: string }
@@ -36,7 +37,7 @@ export default function ScheduleBuilder({ state, update, readGeneration }: { sta
   const restricted = equipment.enabled && matchedOnly
   const available = state.workouts.filter(workout => workout.duration <= minutes && (!restricted || fullyMatches(workout)))
   const validate = (workouts: Workout[]) => {
-    const result = schedulePreview(workouts, choices, minutes)
+    const result = schedulePreview(workouts, choices, minutes, { reserved: state })
     if (restricted) {
       const unavailable = result.find(workout => !fullyMatches(workout))
       if (unavailable) throw new Error(`${unavailable.title} has missing equipment or unknown requirements. Choose an explicitly matching session, update requirements in the plan editor, or turn off the equipment restriction.`)
@@ -84,6 +85,6 @@ export default function ScheduleBuilder({ state, update, readGeneration }: { sta
     </form>
     {error && <p role="alert" className="error-message">{error}</p>}
     {preview && !activePreview && !error && <p role="alert" className="error-message">Saved data or this page changed. Review a new preview before applying. Your choices are kept.</p>}
-    {activePreview && <div className="panel"><h2>Review your schedule</h2><p>{activePreview.workouts.length} sessions, {activePreview.workouts.reduce((sum, workout) => sum + workout.duration, 0)} planned minutes. Set targets are unchanged. Applying this replaces your current plan and saves its previous version.</p><ol>{activePreview.workouts.map(workout => <li key={workout.id}><strong>{workout.day}: {workout.title}</strong><p>{workout.duration} minutes · {workout.exercises.length} exercises</p><EquipmentOverview exercises={workout.exercises} available={comparison} details /></li>)}</ol><button className="primary-button" onClick={() => apply(activePreview)}>Apply this schedule</button><button className="secondary-button" onClick={() => { if (!validReview(activePreview)) return; guard.invalidate(); reviewRef.current = null; setPreview(null); setError('') }}>Keep editing</button></div>}
+    {activePreview && <div className="panel"><h2>Review your schedule</h2><p>{activePreview.workouts.length} sessions, {activePreview.workouts.reduce((sum, workout) => sum + workout.duration, 0)} planned minutes. Set targets are unchanged. Applying this replaces your current plan and saves its previous version.</p><ol>{activePreview.workouts.map(workout => <li key={workout.id}><strong>{workout.day}: {workout.title}</strong><p>{workout.duration} minutes · {workout.exercises.length} exercises</p><EquipmentOverview exercises={workout.exercises} available={comparison} details /><PlannedGroupSummary workout={workout} /></li>)}</ol><button className="primary-button" onClick={() => apply(activePreview)}>Apply this schedule</button><button className="secondary-button" onClick={() => { if (!validReview(activePreview)) return; guard.invalidate(); reviewRef.current = null; setPreview(null); setError('') }}>Keep editing</button></div>}
   </section>
 }

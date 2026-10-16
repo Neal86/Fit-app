@@ -2,6 +2,8 @@
 
 This is an explicit arrangement of existing rows in the **current unfinished session**. It does not author a saved plan, prescribe a training method, create sets or choose intensity. Group names and movement selection are user-entered, not clinical or technique guidance.
 
+Saved future-session definitions are documented separately in [planned grouping](PLANNED_GROUPING.md). Starting one resolves its exact planned slots into fresh runtime rows, groups and rounds using the execution semantics below.
+
 ## Select and review
 
 Choose 2–6 distinct current movements, their order, an exact number of rounds and a 0–900 second round-rest duration. For every round and movement, explicitly select an existing unfinished, non-warmup, ungrouped row. There is no automatic pairing by set number or movement label. The review shows the exact row mapping; extra rows remain outside the group. A group has 1–50 equal-width rounds; a session has at most 25 groups and retains the existing 2,500-row limit.
@@ -37,4 +39,4 @@ Coach training projections continue to include their existing historical row/lab
 
 ## Acceptance boundaries
 
-Source tests cover schema limits, explicit identities, replacement/removal, out-of-order and repeated completion, partial finish, persistence failures, stale callbacks and synthetic transfer projections. Browser layout, keyboard/accessibility, offline behavior, native compilation/devices and store acceptance remain separate unperformed gates. Saved-plan supersets, automatic progression/deload, drop sets and clinical exercise suitability are not implemented by this session-only slice.
+Source tests cover schema limits, explicit identities, replacement/removal, out-of-order and repeated completion, partial finish, persistence failures, stale callbacks and synthetic transfer projections. Browser layout, keyboard/accessibility, offline behavior, native compilation/devices and store acceptance remain separate unperformed gates. Saved-plan authoring is covered by the separate planned-grouping slice. Automatic progression/deload, drop sets and clinical exercise suitability are not implemented.

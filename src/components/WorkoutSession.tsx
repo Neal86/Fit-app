@@ -16,6 +16,7 @@ import { applySessionGrouping, applySessionGroupRemoval, reviewSessionGrouping, 
 import type { SessionGroupingReview, SessionGroupRemovalReview } from '../sessionGrouping'
 import SessionGrouping from './SessionGrouping'
 import { groupRowLabel } from './sessionGroupLabels'
+import PlannedGroupSummary from './PlannedGroupSummary'
 
 export type UpdateState = (change: (state: AppState) => AppState, message?: string) => boolean
 type ReplacementFlow = { state: AppState; routeEpoch: number; sourceId: string; sourceName: string; session: ActiveSession; snapshot: string; route: string; generation: number | undefined; review: SessionReplacementReview | null; drafts: Record<string, MeasurementDraft>; draftSnapshot: string; draftGeneration: number }
@@ -24,7 +25,7 @@ type AdditionFlow = { state: AppState; session: ActiveSession; snapshot: string;
 
 type GroupingFlow = { state: AppState; session: ActiveSession; snapshot: string; route: string; routeEpoch: number; generation: number | undefined; review: SessionGroupingReview | null; removal: SessionGroupRemovalReview | null; drafts: Record<string, MeasurementDraft>; draftSnapshot: string; draftGeneration: number }
 
-export default function WorkoutSession({ state, update, readGeneration }: { state: AppState; update: UpdateState; readGeneration?: () => number }) {
+export default function WorkoutSession({ state, update, readGeneration, persistenceErrorAnnounced = false }: { state: AppState; update: UpdateState; readGeneration?: () => number; persistenceErrorAnnounced?: boolean }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -58,6 +59,9 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
   const [now, setNow] = useState(Date.now())
   const [error, setError] = useState('')
   const saving = useRef(false)
+  const starting = useRef(false)
+  const startEpoch = useRef(0)
+  const renderStartEpoch = startEpoch.current
   const active = state.activeSession
   const session = active?.workout.id === id ? active : null
   const workout = session?.workout ?? state.workouts.find(item => item.id === id)
@@ -73,8 +77,9 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
   const renderRouteEpoch = routeEpoch.current
   const renderLoadEdits = loadEdits.current
   const sessionSnapshot = JSON.stringify(active)
-  const currentContext = useRef({ route, session, loads, readGeneration, state })
-  currentContext.current = { route, session, loads, readGeneration, state }
+  const workoutSnapshot = JSON.stringify(workout)
+  const currentContext = useRef({ route, session, loads, readGeneration, state, workout })
+  currentContext.current = { route, session, loads, readGeneration, state, workout }
   useEffect(() => {
     mounted.current = true
     return () => { mounted.current = false; flowRef.current = null; additionRef.current = null; groupingRef.current = null }
@@ -109,9 +114,24 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the load.'); return false }
   }
   const start = () => {
-    if (!viewIsCurrent()) return
-    if (active && !window.confirm('Starting this workout will discard your current unfinished session. Continue?')) return
-    update(current => { assertCurrentState(current); return { ...current, activeSession: startSession(workout) } }, 'Session started and saved on this device')
+    const validTarget = () => viewIsCurrent() && startEpoch.current === renderStartEpoch && !session && currentContext.current.workout === workout && state.workouts.find(item => item.id === id) === workout && JSON.stringify(workout) === workoutSnapshot
+    if (starting.current || !validTarget()) return
+    starting.current = true
+    let invoked = false
+    let attempting = true
+    try {
+      if (active && !window.confirm('Starting this workout will discard your current unfinished session. Continue?')) return
+      if (!validTarget()) throw new Error('This workout plan changed. Reopen it and review its exact planned rows before starting.')
+      const saved = update(current => {
+        if (!attempting || invoked || !validTarget() || current !== state || current.workouts.find(item => item.id === id) !== workout || JSON.stringify(current.workouts.find(item => item.id === id)) !== workoutSnapshot) throw new Error('This session changed, its workout plan changed, or this start attempt ended. Review the current plan before starting.')
+        assertCurrentState(current)
+        invoked = true
+        return { ...current, activeSession: startSession(workout, undefined, { reserved: current }) }
+      }, 'Session started and saved on this device')
+      if (saved) { startEpoch.current++; setError('') }
+      else setError('Workout was not started. Your saved plan is unchanged; retry when storage is available.')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Workout was not started.') }
+    finally { attempting = false; starting.current = false }
   }
   const finish = () => {
     if (!session || saving.current || !viewIsCurrent()) return
@@ -259,7 +279,9 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
     <header className="page-header"><span>{workout.day} · {workout.difficulty}</span><h1>{workout.title}</h1><p>{workout.description}</p></header>
     <p className="safety-note">General fitness guidance only. Choose a comfortable load and range of motion. Stop if movement causes pain. This app does not diagnose injuries.</p>
     {active && !session && <div className="notice">An unfinished workout is saved: <Link to={`/workouts/${active.workout.id}`}>{active.workout.title}</Link></div>}
-    {!session ? <button className="primary-button" onClick={start}><Play />Start workout</button> : <>
+    {!session && <PlannedGroupSummary workout={workout} />}
+    {!session && error && <p id="workout-start-error" role={persistenceErrorAnnounced ? undefined : 'alert'} className="error-message">{error}</p>}
+    {!session ? <button className="primary-button" aria-describedby={error ? 'workout-start-error' : undefined} onClick={start}><Play />Start workout</button> : <>
       <div className="session-bar">
         <div><span>Active training time</span><strong data-testid="session-timer">{formatTime(elapsedSeconds(session, now))}</strong></div>
         <button className="secondary-button" onClick={() => change(current => toggleSession(current))}>{session.runningSince === null ? <><Play />Resume timer</> : <><Pause />Pause timer</>}</button>

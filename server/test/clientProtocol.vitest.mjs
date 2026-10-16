@@ -6,6 +6,7 @@ import { finishSession, startSession, setSessionCompletion } from '../../src/ses
 import { applySessionReplacement, reviewSessionReplacement } from '../../src/sessionReplacement'
 import { applySessionAddition, reviewSessionAddition } from '../../src/sessionAddition'
 import { applySessionGrouping, reviewSessionGrouping } from '../../src/sessionGrouping'
+import { savePlanRevision, schedulePreview } from '../../src/planning'
 import { createApp } from '../app.mjs'
 import { openDatabase } from '../database.mjs'
 
@@ -380,5 +381,80 @@ describe('session grouping through own backup, account and scoped-sharing bounda
     expect((await coach.exportAccount(PASSWORD)).sync.state).toBeNull()
     await athlete.setConsent(false)
     await expect(c.snapshot(relationship)).rejects.toMatchObject({ code: 'sharing_unavailable' })
+  })
+})
+
+
+describe('saved planned grouping through own account and scoped sharing', () => {
+  it('preserves copied/revised definitions and exact runtime rows through backup, manual sync, partial finish and export', async () => {
+    const f = service({ coachingEnabled: true })
+    const athlete = (await f.registered('planned-athlete@example.test')).client
+    const coach = (await f.registered('planned-coach@example.test')).client
+    await athlete.setConsent(true); await athlete.inspectSync()
+    let state = freshState()
+    state.workouts = [structuredClone(state.workouts[0])]
+    state.workouts[0].exercises = state.workouts[0].exercises.slice(0, 2).map(exercise => ({ ...exercise, sets: 3 }))
+    const workout = structuredClone(state.workouts[0])
+    workout.plannedGrouping = { version: 1, groups: [{ id: 'planned-private-group', name: 'Private chosen arrangement', restSeconds: 37,
+      rounds: [1, 3].map(setNumber => ({ id: `planned-private-round-${setNumber}`, members: workout.exercises.map(exercise => ({ exerciseId: exercise.id, setNumber })) })) }] }
+    state = savePlanRevision(state, [workout], 'Before explicitly chosen grouping')
+    const scheduled = schedulePreview(state.workouts, [{ day: 'Monday', workoutId: workout.id }, { day: 'Wednesday', workoutId: workout.id }], 600, { reserved: state })
+    expect(scheduled[0].plannedGrouping).toEqual(workout.plannedGrouping)
+    expect(scheduled[1].plannedGrouping.groups[0].id).not.toBe(workout.plannedGrouping.groups[0].id)
+    expect(scheduled[1].plannedGrouping.groups[0].rounds[0].members.map(member => member.exerciseId)).toEqual(scheduled[1].exercises.map(exercise => exercise.id))
+    state = savePlanRevision(state, scheduled, 'Before repeated weekly days')
+    const startedAt = Date.parse('2026-10-15T10:00:00Z')
+    state.activeSession = startSession(state.workouts[1], startedAt, { reserved: state })
+    expect(state.activeSession.workout).not.toHaveProperty('plannedGrouping')
+    expect(state.activeSession.grouping.groups[0].id).not.toBe(scheduled[1].plannedGrouping.groups[0].id)
+    expect(state.activeSession.restUntil).toBeNull()
+    const beforeActive = structuredClone(state.activeSession)
+    const changedPlan = structuredClone(state.workouts)
+    changedPlan[1].plannedGrouping.groups[0].name = 'Changed future-only private label'
+    state = savePlanRevision(state, changedPlan, 'Before future arrangement edit')
+    expect(state.activeSession).toEqual(beforeActive)
+    const activeGroup = state.activeSession.grouping.groups[0]
+    for (let index = 0; index < activeGroup.rounds.length; index++) {
+      const rows = activeGroup.rounds[index].setIds.map(id => state.activeSession.sets.find(row => row.id === id))
+      expect(rows.map(row => ({ exerciseId: row.exerciseId, setNumber: row.setNumber }))).toEqual(scheduled[1].plannedGrouping.groups[0].rounds[index].members)
+      expect(rows.every(row => !row.completed && row.reps === null && row.weightKg === null)).toBe(true)
+    }
+    const own = pausedCloudState(state, startedAt + 123_000)
+    expect(parseBackup(JSON.stringify(own))).toEqual(own)
+    await athlete.upload(own, 0, true)
+    const saved = await athlete.inspectSync()
+    expect(saved.state).toEqual(own)
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toEqual(own)
+    const a = new CoachingClient(athlete), c = new CoachingClient(coach)
+    await a.invite(coach.session.user.email, true)
+    await c.accept((await c.overview()).invitations[0], true)
+    await a.consent((await a.overview()).relationships[0], ['training'], true)
+    const relationship = (await c.overview()).relationships[0]
+    const before = await c.snapshot(relationship)
+    expect(JSON.stringify(before)).not.toContain('plannedGrouping')
+    expect(JSON.stringify(before)).not.toContain('Private chosen arrangement')
+    expect(JSON.stringify(before)).not.toContain('Changed future-only private label')
+    expect(JSON.stringify(before)).not.toContain('activeSession')
+    let restored = parseBackup(JSON.stringify(saved.state))
+    const round = restored.activeSession.grouping.groups[0].rounds[0]
+    for (const id of round.setIds) {
+      restored.activeSession.sets.find(row => row.id === id).reps = 8
+      restored = setSessionCompletion(restored, id, true, 12.123456789, startedAt + 124_000)
+    }
+    expect(restored.activeSession.restUntil).toBe(startedAt + 161_000)
+    const log = finishSession(restored.activeSession, startedAt + 300_000)
+    restored = { ...restored, activeSession: null, logs: [log, ...restored.logs] }
+    await athlete.upload(restored, saved.revision, true)
+    const finished = (await athlete.inspectSync()).state
+    expect(finished).toEqual(restored)
+    expect(finished.workouts).toEqual(own.workouts); expect(finished.planHistory).toEqual(own.planHistory)
+    expect(finished.logs[0].grouping).toEqual(beforeActive.grouping)
+    expect(finished.logs[0].sets.some(row => !row.completed)).toBe(true)
+    const projected = await c.snapshot(relationship)
+    expect(projected.categories.training.logs[0]).not.toHaveProperty('grouping')
+    expect(projected.categories.training.logs[0].sets).toEqual(finished.logs[0].sets)
+    expect(JSON.stringify(projected)).not.toContain('plannedGrouping')
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toEqual(finished)
+    expect((await coach.exportAccount(PASSWORD)).sync.state).toBeNull()
   })
 })

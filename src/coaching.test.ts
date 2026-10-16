@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CloudClient } from './cloud'
 import { COACHING_POLICY, CoachingClient, coachingFeedbackText, readCoachingSnapshot, readOverview, readRelationship } from './coaching'
 import type { CoachingRelationship } from './coaching'
-import { freshState } from './storage'
+import { freshState, parseBackup } from './storage'
 import { finishSession, startSession } from './session'
 
 const endpoint = 'https://app.example.test/api/v1'
@@ -106,6 +106,22 @@ describe('coaching transport and strict contract', () => {
     expect(() => readCoachingSnapshot(response(granted(), categories), granted())).toThrow('could not be validated')
     delete (log as unknown as Record<string, unknown>).grouping
     expect(readCoachingSnapshot(response(granted(), categories), granted()).categories.training?.logs).toEqual([log])
+  })
+  it.each([undefined, null, { version: 1, groups: [] }, { version: 2, groups: [] }, 'valid'])('rejects planned grouping %j from current and historical coach plans', plannedGrouping => {
+    for (const previous of [false, true]) {
+      const base = freshState()
+      base.planHistory = [{ id: 'plan-1', label: 'Previous plan', savedAt: stamp, workouts: structuredClone(base.workouts) }]
+      const workout = (previous ? base.planHistory[0].workouts : base.workouts)[0]
+      Object.assign(workout, { plannedGrouping: plannedGrouping === 'valid' ? {
+        version: 1, groups: [{ id: 'private-planned-group', name: 'Private future-session label', restSeconds: 25,
+          rounds: [{ id: 'private-planned-round', members: workout.exercises.slice(0, 2).map(exercise => ({ exerciseId: exercise.id, setNumber: 1 })) }] }],
+      } : plannedGrouping })
+      if (plannedGrouping === 'valid') expect(parseBackup(JSON.stringify(base))).toEqual(base)
+      const categories = { training: { workouts: base.workouts, logs: [], planHistory: base.planHistory } }
+      expect(() => readCoachingSnapshot(response(granted(), categories), granted())).toThrow('could not be validated')
+      delete (workout as unknown as Record<string, unknown>).plannedGrouping
+      expect(readCoachingSnapshot(response(granted(), categories), granted()).categories.training).toEqual(categories.training)
+    }
   })
   it('does not retry conflicts or failed writes and reports disabled service truthfully', async () => {
     const { api, fetcher } = await setup(json({ error: { code: 'coaching_conflict' } }, 409), json({ error: { code: 'coaching_disabled' } }, 503))

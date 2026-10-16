@@ -97,3 +97,9 @@ Synthetic client/server protocol tests cover separate acceptance/grants, daily d
 The owner's manually uploaded v4 snapshot may include optional version-1 session grouping on active sessions and logs. It retains exact group/round/set references through account export and backup; paused transfer never starts round rest. Earlier strict APIs reject this extension instead of flattening it, so update the API before accepting grouped copies. Preserve a compatible pre-feature backup for any deliberate rollback; restoring it omits later work. See [session grouping](docs/SESSION_GROUPING.md).
 
 Grouping names, IDs, rounds and rest metadata are not added to the separately consented coach training projection. Its existing historical row/label fields remain unchanged, active sessions remain excluded, and the client rejects unexpected grouping in coach responses. Private challenge counts still use only saved positive completed non-warmup rows and one self-recorded day per UTC date; group metadata contributes no additional credit.
+
+### Saved planned grouping
+
+The optional `Workout.plannedGrouping` v1 extension is retained in current and historical private plan snapshots. Starting creates fresh runtime row/group/round identities and omits the planned wrapper from the active workout snapshot. Backup, manual upload and own account export preserve both plan definitions and executed grouping; neither starts timers or uploads automatically. Strict older v4 APIs reject new plan definitions, so upgrade compatible readers before transfer and preserve a separate pre-feature backup for deliberate rollback. See [planned grouping](docs/PLANNED_GROUPING.md).
+
+Coach projections omit this field from current and historical plans; the coach client rejects it even though the owner’s parser accepts it. No additional challenge scoring, recipient or sharing category is introduced.
