@@ -14,6 +14,52 @@ import { openDatabase } from '../database.mjs'
 const ORIGIN = 'https://fitness.example.test'
 const PASSWORD = 'Synthetic account password 123!'
 const databases = []
+
+describe('unknown workout-calorie estimates across the real client/server contract', () => {
+  it('retains unknown, known zero, numeric history, partial-session completion and scoped sharing without invented values', async () => {
+    const f = service({ coachingEnabled: true })
+    const athlete = (await f.registered('estimate-athlete@example.test')).client
+    const coach = (await f.registered('estimate-coach@example.test')).client
+    await athlete.setConsent(true); await athlete.inspectSync()
+    const unknown = () => ({ version: 1, status: 'unknown' })
+    const time = Date.parse('2026-10-15T10:00:00.000Z')
+    let state = freshState()
+    state.workouts[0].calories = 0.123456789012345
+    state = savePlanRevision(state, state.workouts.map((workout, index) => index === 0 ? { ...workout, calories: unknown() } : index === 1 ? { ...workout, calories: 0 } : workout), 'Before removing an estimate', new Date(time))
+    const historical = structuredClone(state.planHistory)
+    state.activeSession = startSession(state.workouts[0], time, { reserved: state })
+    state.activeSession.sets[0] = { ...state.activeSession.sets[0], reps: 8, completed: true }
+    state.nutrition.meals = [{ id: 'synthetic-estimate-meal', date: '2026-10-15', mealType: 'Lunch', foodName: 'Synthetic only', serving: 'One', calories: 0, protein: 1, carbs: 2, fat: 3 }]
+    state = pausedCloudState(state, time + 61_000)
+    expect(parseBackup(JSON.stringify(state))).toEqual(state)
+    expect(state.activeSession.workout.calories).toEqual(unknown())
+    await athlete.upload(state, 0, true)
+    expect((await athlete.inspectSync()).state).toEqual(state)
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toEqual(state)
+    const a = new CoachingClient(athlete), c = new CoachingClient(coach)
+    await a.invite(coach.session.user.email, true); await c.accept((await c.overview()).invitations[0], true)
+    await a.consent((await a.overview()).relationships[0], ['training'], true)
+    const relationship = (await c.overview()).relationships[0]
+    const projection = await c.snapshot(relationship)
+    expect(projection.categories.training.workouts[0].calories).toEqual(unknown())
+    expect(projection.categories.training.workouts[1].calories).toBe(0)
+    expect(projection.categories.training.planHistory[0].workouts[0].calories).toBe(0.123456789012345)
+    expect(Object.keys(projection.categories)).toEqual(['training'])
+    expect(JSON.stringify(projection)).not.toMatch(/activeSession|nutrition|exerciseLibrary/)
+    const log = finishSession(state.activeSession, time + 61_000)
+    expect(log.calories).toEqual(unknown()); expect(log.durationSeconds).toBe(61)
+    expect(log.sets.filter(set => set.completed)).toHaveLength(1)
+    state = { ...state, activeSession: null, logs: [log] }
+    await athlete.upload(state, 1, true)
+    const saved = (await athlete.inspectSync()).state
+    expect(saved).toEqual(state); expect(saved.planHistory).toEqual(historical)
+    expect((await c.snapshot(relationship)).categories.training.logs[0].calories).toEqual(unknown())
+    expect((await coach.exportAccount(PASSWORD)).sync.state).toBeNull()
+    await athlete.setConsent(false)
+    await expect(c.snapshot(relationship)).rejects.toMatchObject({ code: 'sharing_unavailable' })
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toBeNull()
+  })
+})
 afterEach(() => { databases.splice(0).forEach(db => db.close()) })
 function service(options = {}) {
   const db = openDatabase(); databases.push(db)

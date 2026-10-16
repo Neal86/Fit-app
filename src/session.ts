@@ -1,4 +1,5 @@
 import { parseState, validWorkout } from './stateValidation'
+import { isUnknownCalories, unknownCalories } from './calorieEstimates'
 import { freshIdentityFactory, type IdentityOptions } from './identities'
 import type { ActiveSession, AppState, ExerciseSet, Workout, WorkoutLog } from './types'
 
@@ -39,7 +40,7 @@ export function finishSession(session: ActiveSession, now = Date.now()): Workout
   return {
     id: session.id, workoutId: session.workout.id, title: session.workout.title, startedAt: session.startedAt,
     completedAt: new Date(now).toISOString(), duration: Math.round(seconds / 60 * 100) / 100,
-    durationSeconds: seconds, calories: Math.round(session.workout.calories * seconds / (session.workout.duration * 60)),
+    durationSeconds: seconds, calories: isUnknownCalories(session.workout.calories) ? unknownCalories() : Math.round(session.workout.calories * seconds / (session.workout.duration * 60)),
     completedExerciseIds: session.workout.exercises.filter(exercise => {
       const sets = session.sets.filter(set => set.exerciseId === exercise.id)
       return sets.length > 0 && sets.every(set => set.completed)

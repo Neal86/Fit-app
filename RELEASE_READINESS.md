@@ -25,6 +25,7 @@ No automatic CI, production deployment, paid service, live email/AI provider, re
 - Twenty reversible prior plan versions, with confirmation before restoring/replacing a plan
 - Date filters, history search, activity calendar, working-set volume, highest recorded loads and dated weight trends; historical exercise labels are preserved for new logs
 - Backdated weight correction keeps the most recent dated weight in the profile; estimates remain labeled and old records are not rewritten into invented measured results
+- Explicit versioned unknown workout-calorie estimates, exact existing numeric values and known zero, unknown-aware history/aggregates, and unchanged own-transfer and coach-category boundaries; see [estimate semantics and compatibility](docs/CALORIE_ESTIMATES.md)
 
 ### Nutrition and data durability
 - Manual food/water records, serving descriptions, explicit nutrient values, daily totals and optional user-entered date-specific targets
@@ -78,9 +79,17 @@ The persistent manual library adds 113 core/schema/ancestry tests and 169 retain
 
 Author-only privacy probes initially used incomplete completed-row fixtures and changed an existing equipment-disclosure sentence; the fixtures and production wording were corrected while retaining the original assertions. One existing five-second Account probe timed out under overlapping load; the same focused suite then passed without changing its assertions or deadline. Compact export now validates its finalized paused snapshot before delivery, and exact-limit/over-limit tests confirm that backup generation cannot silently produce an unreadable file or alter prior storage. The first full integrated library aggregate passed all 2,269 tests, lint, TypeScript and production/offline build without a retry or relaxed assertion/deadline. The gate table below records this result. No browser or native route was retried.
 
+### Unknown workout-calorie verification
+
+The explicit unknown-estimate prerequisite retains numeric values, including zero and fractional values, while introducing the exact versioned unknown marker at existing workout/log fields. Author tests cover marker shape, legacy migration refusal, draft recovery, numeric arithmetic, immutable snapshots, aggregate coverage and every affected readout. The independent review retains 142 regressions: 113 schema cases, 9 persistence cases, 6 frozen-reader/provenance cases and 14 editor lifecycle cases. It reproduced and closed two serialization-loss defects involving inherited/non-enumerable calorie fields and non-serializable ancestors. Markers now require serializable ownership throughout their allowed paths. A related author probe also closed unsupported-field recovery in temporary plan drafts. Review found no remaining actionable source issue in this bounded slice.
+
+Four additional server groups include 20 malformed uploads that leave the preceding revision unchanged. The real client/server scenario verifies unknown and known-zero plans, exact fractional prior versions, partial-session completion, backup/manual sync/account export, the existing scoped coach calorie field and consent revocation. Nutrition and private challenge counts remain unchanged. Two existing numeric fixture assertions gained explicit type narrowing without changing their arithmetic or expectations. One new UI journey initially lacked completed-row evidence; its synthetic fixture was corrected without changing the session completion guard.
+
+The first complete frontend run passed 2,401 of 2,402 tests; an existing exact-byte-limit test exceeded its unchanged five-second deadline while large fixtures ran concurrently. That same test passed in 2.2 seconds in the unchanged isolated rerun, and all five tests in its file passed. The final complete local gate passed all 2,591 tests, lint, TypeScript and production/offline build using serial frontend/protocol workers and installed Node entry points, with no package-manager or registry operation. Assertions and deadlines are unchanged. One preliminary execution could not be verified and is not counted as a passing run; separate completed local checks provide the verification. No browser or native route was retried.
+
 | Gate | Evidence/status |
 |---|---|
-| Local lint/unit/component/API/protocol/build | Passed: 2,085 frontend + 162 backend + 22 protocol tests (2,269 total), lint and production build |
+| Local lint/unit/component/API/protocol/build | Passed: 2,402 frontend + 166 backend + 23 protocol tests (2,591 total), lint and production/offline build; serial frontend/protocol workers |
 | Web production dependency audit | Re-run 2026-10-15: 0 known npm production vulnerabilities; new native dependency resolution/audit and merged-manifest review remain unrun |
 | Android + iOS `cap sync` | Prior addition source passed. The earlier grouping attempt stopped reporting during its build step; completion is unverified after its process poll was cancelled. No rerun or native compilation is claimed; this bridge slice adds native source but does not claim refreshed native build assets |
 | Native XML/plist/Xcode resource parsing | Passed: 19 tracked Android/iOS XML/plist/privacy/scheme/storyboard resources and Xcode project source references; no native compiler or linker |
@@ -129,7 +138,7 @@ Independent review rechecked the earlier delayed-email/password race, wide-paylo
 | Community/challenges | Default-off private two-person, exact-window count sharing with bilateral consent, leave/block and self-recorded scoring rules | Public/group community design, reporting/moderation, sender withdrawal/unblock/support workflow, operational abuse/retention policy, anti-fraud needs and browser acceptance |
 | Wearables/health platforms | Not implemented | Explicit provider scopes/adapters, revocation/deletion, deduplication/provenance and consented tests |
 | Reminders/push | No delivery | Permission UX, local vs server design, timezone/quiet-hours, opt-out and delivery acceptance |
-| Analytics | Local filtered activity/weight/load summaries | Chosen product metrics and any external analytics consent; no external analytics collection is installed |
+| Analytics | Local filtered activity/weight/load summaries and explicit unknown/partial workout-calorie totals | Chosen product metrics and any external analytics consent; no external analytics collection is installed |
 | Web production | Tested build and static container config | Container acceptance, real HTTPS/domain/CSP/proxy, deployed SHA, cache updates and incident/runbook checks |
 | iOS/Android | Source projects, sync workflow and disabled isolated native account bridge source | Dependency resolution/audit, merged-manifest review, SDK compile, WebView profile/upgrade isolation, native retry/lifecycle/device QA, signing and store acceptance |
 | Brand/legal/store | Placeholder FitFlow name/IDs | Ownership, final legal/support/privacy details, real screenshots, territories/pricing and audience/age-rating decisions |

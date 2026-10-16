@@ -326,7 +326,10 @@ describe('addition persistence, history and later replacement', () => {
     expect(log.sets).toEqual(next.activeSession!.sets)
     expect(log.completedExerciseIds).toContain(lastExercise(next).id)
     expect(log.durationSeconds).toBe(Math.floor(state.activeSession!.elapsedSeconds))
-    expect(log.calories).toBe(Math.round(state.activeSession!.workout.calories * log.durationSeconds! / (state.activeSession!.workout.duration * 60)))
+    const numericEstimate = state.activeSession!.workout.calories
+    expect(typeof numericEstimate).toBe('number')
+    if (typeof numericEstimate !== 'number') throw new Error('This existing numeric-estimate fixture must remain numeric.')
+    expect(log.calories).toBe(Math.round(numericEstimate * log.durationSeconds! / (state.activeSession!.workout.duration * 60)))
     const completed = { ...next, activeSession: null, logs: [...next.logs, log] }
     expect(parseBackup(JSON.stringify(completed))).toEqual(completed)
     log.sets![0].weightKg = 0; log.exerciseSnapshots![0].name = 'History copy only'

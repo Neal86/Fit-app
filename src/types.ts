@@ -2,6 +2,7 @@ import type { NutritionState } from './nutrition.js'
 import type { EquipmentId } from './equipment.js'
 export type Goal = 'Build muscle' | 'Lose fat' | 'Improve endurance' | 'Stay active'
 export type Level = 'Beginner' | 'Intermediate' | 'Advanced'
+export type CalorieEstimate = number | { version: 1; status: 'unknown' }
 export type LibraryOrigin = { version: 1; entryId: string; revision: number }
 export type LibraryContent = {
   name: string; sets: number; reps: string; restSeconds: number; category: string; notes?: string; equipment?: EquipmentId[]
@@ -14,7 +15,7 @@ export type Exercise = {
   id: string; name: string; sets: number; reps: string; restSeconds: number; category: string; notes?: string; equipment?: EquipmentId[]; libraryOrigin?: LibraryOrigin
 }
 export type Workout = {
-  id: string; title: string; day: string; duration: number; calories: number; difficulty: Level; description: string; exercises: Exercise[]; plannedGrouping?: PlannedGrouping
+  id: string; title: string; day: string; duration: number; calories: CalorieEstimate; difficulty: Level; description: string; exercises: Exercise[]; plannedGrouping?: PlannedGrouping
 }
 export type PlannedGroupMember = { exerciseId: string; setNumber: number }
 export type PlannedGroupRound = { id: string; members: PlannedGroupMember[] }
@@ -33,7 +34,7 @@ export type ActiveSession = {
 }
 export type WorkoutLog = {
   id: string; workoutId: string; title: string; startedAt: string; completedAt: string; duration: number;
-  durationSeconds?: number; calories: number; completedExerciseIds: string[]; notes?: string; sets?: ExerciseSet[];
+  durationSeconds?: number; calories: CalorieEstimate; completedExerciseIds: string[]; notes?: string; sets?: ExerciseSet[];
   exerciseSnapshots?: Pick<Exercise, 'id' | 'name' | 'category' | 'libraryOrigin'>[]; grouping?: SessionGrouping
 }
 export type WeightEntry = { id: string; date: string; weightKg: number }

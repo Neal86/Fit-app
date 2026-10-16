@@ -19,6 +19,7 @@ import { groupRowLabel } from './sessionGroupLabels'
 import PlannedGroupSummary from './PlannedGroupSummary'
 import type { LibraryCopyReview } from '../exerciseLibrary'
 import LibraryOrigin from './LibraryOrigin'
+import { calorieEstimateText } from '../calorieDisplay'
 
 export type UpdateState = (change: (state: AppState) => AppState, message?: string) => boolean
 type ReplacementFlow = { libraryEpoch: number; librarySnapshot: string; state: AppState; routeEpoch: number; sourceId: string; sourceName: string; session: ActiveSession; snapshot: string; route: string; generation: number | undefined; review: SessionReplacementReview | null; drafts: Record<string, MeasurementDraft>; draftSnapshot: string; draftGeneration: number }
@@ -284,6 +285,7 @@ export default function WorkoutSession({ state, update, readGeneration, persiste
   return <section>
     <Link className="back-link" to="/workouts"><ArrowLeft />All workouts</Link>
     <header className="page-header"><span>{workout.day} · {workout.difficulty}</span><h1>{workout.title}</h1><p>{workout.description}</p></header>
+    <p className="session-note">Saved plan estimate: {calorieEstimateText(workout.calories)}. This is an estimate for the planned session, not a measurement of this workout.</p>
     <p className="safety-note">General fitness guidance only. Choose a comfortable load and range of motion. Stop if movement causes pain. This app does not diagnose injuries.</p>
     {active && !session && <div className="notice">An unfinished workout is saved: <Link to={`/workouts/${active.workout.id}`}>{active.workout.title}</Link></div>}
     {!session && <PlannedGroupSummary workout={workout} />}

@@ -13,6 +13,7 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 - Editable workout plans with schedules, exercises, sets, rep targets, rest times, and notes
 - Per-set reps, weight, timed sets, optional RPE, warm-up flags, last-session reference, and rest timer
 - Durable unfinished sessions, wall-clock start/pause/resume, actual duration, and estimated calories
+- Explicit unknown workout-calorie estimates, preserved through history and private transfers, with partial totals distinguished from complete sums
 - Partial-session confirmation and duplicate-save protection
 - Explicit mid-session exercise replacement with review, fresh unfinished rows and preserved completed work/history
 - Reviewed session-only additions from library/custom entries, with fresh blank rows and unchanged plans, completed work and timers
@@ -40,6 +41,8 @@ FitFlow is a single-codebase fitness application for Web, iOS, and Android. The 
 - Production Docker image with Nginx SPA fallback, health check, caching, and security headers
 
 See [personal exercise library](docs/EXERCISE_LIBRARY.md) for manual authoring, exact copy reviews, historical ancestry, strict older-reader compatibility and private-transfer boundaries.
+
+See [workout calorie estimates](docs/CALORIE_ESTIMATES.md) for explicit unknown values, known-zero preservation, partial totals and older-reader compatibility.
 
 See [measurement preferences](docs/MEASUREMENT_UNITS.md) for entry behavior, canonical storage and validation bounds.
 

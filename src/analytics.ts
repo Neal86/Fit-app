@@ -1,4 +1,5 @@
 import { localDate } from './session'
+import { summarizeCalories } from './calorieEstimates'
 import type { ExerciseSet, WeightEntry, Workout, WorkoutLog } from './types'
 
 export type DateRange = { from: string; to: string }
@@ -19,10 +20,14 @@ export function filteredLogs(logs: WorkoutLog[], range: DateRange, query = ''): 
 export const completedWorkSets = (sets: ExerciseSet[] = []) => sets.filter(set => set.completed && !set.warmup)
 export const setVolume = (sets: ExerciseSet[] = []) => completedWorkSets(sets).reduce((total, set) => total + (set.reps ?? 0) * (set.weightKg ?? 0), 0)
 export function summarizeLogs(logs: WorkoutLog[]) {
+  const calories = summarizeCalories(logs.map(log => log.calories))
   return {
     sessions: logs.length,
     seconds: logs.reduce((sum, log) => sum + (log.durationSeconds ?? log.duration * 60), 0),
-    calories: logs.reduce((sum, log) => sum + log.calories, 0),
+    calories: calories.total,
+    knownCalories: calories.knownTotal,
+    knownCalorieSessions: calories.knownCount,
+    unknownCalorieSessions: calories.unknownCount,
     volumeKg: logs.reduce((sum, log) => sum + setVolume(log.sets), 0),
     sets: logs.reduce((sum, log) => sum + completedWorkSets(log.sets).length, 0),
     trainingDays: new Set(logs.map(log => localDate(new Date(log.completedAt)))).size,

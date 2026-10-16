@@ -6,6 +6,7 @@ import { freshIdentityFactory } from '../identities'
 import type { AppState, Workout } from '../types'
 import type { UpdateState } from './WorkoutSession'
 import { clearPlanDraft, readPlanDraft, savePlanDraft } from '../planDraft'
+import { isUnknownCalories, unknownCalories } from '../calorieEstimates'
 import ExercisePicker from './ExercisePicker'
 import LibraryOrigin from './LibraryOrigin'
 import { materializeLibraryCopy } from '../exerciseLibrary'
@@ -86,7 +87,8 @@ export default function PlanEditor({ state, update, readGeneration }: { state: A
       <label>Scheduled day<select value={selected.day} onChange={event => edit({ ...selected, day: event.target.value })}>{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday','Any day'].map(day => <option key={day}>{day}</option>)}</select></label>
       <label>Experience<select value={selected.difficulty} onChange={event => edit({ ...selected, difficulty: event.target.value as Workout['difficulty'] })}>{['Beginner','Intermediate','Advanced'].map(level => <option key={level}>{level}</option>)}</select></label>
       <label>Planned minutes<input required type="number" min="1" max="600" value={selected.duration} onChange={event => edit({ ...selected, duration: Number(event.target.value) })} /></label>
-      <label>Estimated calories (optional estimate)<input required type="number" min="0" max="10000" value={selected.calories} onChange={event => edit({ ...selected, calories: Number(event.target.value) })} /></label>
+      <div><label>Estimated calories (kcal, optional)<input type="number" min="0" max="10000" step="any" aria-describedby="plan-calorie-help" value={isUnknownCalories(selected.calories) ? '' : selected.calories} onChange={event => edit({ ...selected, calories: event.target.value === '' ? unknownCalories() : Number(event.target.value) })} /></label>
+      <small id="plan-calorie-help">Leave blank when no estimate is available. Blank is saved as unknown, not 0. Enter 0 only for an explicit zero estimate. Editing exercises does not recalculate this estimate.</small></div>
       <label>Description<textarea maxLength={2000} value={selected.description} onChange={event => edit({ ...selected, description: event.target.value })} /></label>
       <EquipmentOverview exercises={selected.exercises} available={available} />
       <PlannedGroupingEditor workout={selected} reserved={state} isViewCurrent={viewIsCurrent} isCurrent={() => viewIsCurrent() && sourceIsCurrent} onChange={value => edit(value)} />
