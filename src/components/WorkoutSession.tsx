@@ -9,9 +9,14 @@ import type { MeasurementDraft } from '../units'
 import { applySessionReplacement, reviewSessionReplacement } from '../sessionReplacement'
 import type { SessionReplacementReview } from '../sessionReplacement'
 import SessionReplacement from './SessionReplacement'
+import { applySessionAddition, reviewSessionAddition } from '../sessionAddition'
+import type { SessionAdditionReview } from '../sessionAddition'
+import SessionAddition from './SessionAddition'
 
 export type UpdateState = (change: (state: AppState) => AppState, message?: string) => boolean
 type ReplacementFlow = { sourceId: string; sourceName: string; session: ActiveSession; snapshot: string; route: string; generation: number | undefined; review: SessionReplacementReview | null; drafts: Record<string, MeasurementDraft>; draftSnapshot: string; draftGeneration: number }
+
+type AdditionFlow = { state: AppState; session: ActiveSession; snapshot: string; route: string; generation: number | undefined; review: SessionAdditionReview | null; draftSnapshot: string; draftGeneration: number }
 
 export default function WorkoutSession({ state, update, readGeneration }: { state: AppState; update: UpdateState; readGeneration?: () => number }) {
   const { id } = useParams()
@@ -24,6 +29,10 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
   const flowRef = useRef<ReplacementFlow | null>(null)
   const [replacement, setReplacement] = useState<ReplacementFlow | null>(null)
   const [replacementError, setReplacementError] = useState('')
+  const additionRef = useRef<AdditionFlow | null>(null)
+  const additionBusy = useRef(false)
+  const [addition, setAddition] = useState<AdditionFlow | null>(null)
+  const [additionError, setAdditionError] = useState('')
   const seenRoute = useRef(route)
   const routeEpoch = useRef(0)
   if (seenRoute.current !== route) {
@@ -31,6 +40,8 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
     routeEpoch.current += 1
     flowRef.current = null
     if (replacement) setReplacement(null)
+    additionRef.current = null
+    if (addition) setAddition(null)
   }
   const [now, setNow] = useState(Date.now())
   const [error, setError] = useState('')
@@ -54,7 +65,7 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
   currentContext.current = { route, session, loads, readGeneration, state }
   useEffect(() => {
     mounted.current = true
-    return () => { mounted.current = false; flowRef.current = null }
+    return () => { mounted.current = false; flowRef.current = null; additionRef.current = null }
   }, [])
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 250)
@@ -89,6 +100,7 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
   const finish = () => {
     if (!session || saving.current || !viewIsCurrent()) return
     if (session.sets.some(set => !set.completed) && !window.confirm('Some sets are unfinished. Save this partial workout?')) return
+    setAdditionFlow(null)
     saving.current = true
     try {
       const sets = session.sets.map(set => ({ ...set, weightKg: readMeasurement(loadDraft(set), 'load') }))
@@ -108,7 +120,7 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
     return mounted.current && flowRef.current === flow && current.route === flow.route && current.session === flow.session && JSON.stringify(current.session) === flow.snapshot && current.readGeneration?.() === flow.generation && (!flow.review || loadEdits.current === flow.draftGeneration && JSON.stringify(current.loads) === flow.draftSnapshot)
   }
   const openReplacement = (exercise: Exercise, label: string) => {
-    if (!session || !viewIsCurrent()) return
+    if (!session || !viewIsCurrent() || additionRef.current || flowRef.current) return
     setFlow({ sourceId: exercise.id, sourceName: label, session, snapshot: JSON.stringify(session), route, generation: readGeneration?.(), review: null, drafts: {}, draftSnapshot: '', draftGeneration: loadEdits.current })
   }
   const selectReplacement = (flow: ReplacementFlow, exercise: Exercise) => {
@@ -136,6 +148,40 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
     } catch (cause) { setReplacementError(cause instanceof Error ? cause.message : 'Unable to save replacement.') }
     finally { replacementBusy.current = false }
   }
+  const setAdditionFlow = (flow: AdditionFlow | null) => { additionRef.current = flow; setAddition(flow); setAdditionError('') }
+  const validAdditionContext = (flow: AdditionFlow) => {
+    const current = currentContext.current
+    return mounted.current && additionRef.current === flow && !flowRef.current && current.state === flow.state && current.route === flow.route && current.session === flow.session && JSON.stringify(current.session) === flow.snapshot && current.readGeneration?.() === flow.generation && (!flow.review || loadEdits.current === flow.draftGeneration && JSON.stringify(current.loads) === flow.draftSnapshot)
+  }
+  const openAddition = () => {
+    if (!session || !viewIsCurrent() || flowRef.current || additionRef.current) return
+    setAdditionFlow({ state, session, snapshot: JSON.stringify(session), route, generation: readGeneration?.(), review: null, draftSnapshot: '', draftGeneration: loadEdits.current })
+  }
+  const selectAddition = (flow: AdditionFlow, exercise: Exercise) => {
+    if (!validAdditionContext(flow)) { setAdditionError('This review is no longer current. Cancel and start again.'); return }
+    try {
+      const review = reviewSessionAddition(state, exercise)
+      setAdditionFlow({ ...flow, review, draftSnapshot: JSON.stringify(currentContext.current.loads), draftGeneration: loadEdits.current })
+    } catch (cause) { setAdditionError(cause instanceof Error ? cause.message : 'Unable to review addition.') }
+  }
+  const confirmAddition = (flow: AdditionFlow) => {
+    if (additionBusy.current || !flow.review || additionRef.current !== flow) return
+    if (!validAdditionContext(flow)) { setAdditionError('This review is no longer current. Cancel and start again.'); return }
+    additionBusy.current = true
+    let invoked = false
+    let attempting = true
+    try {
+      const saved = update(current => {
+        // This callback belongs only to this synchronous attempt, never to a later replay.
+        if (!attempting || invoked || !validAdditionContext(flow) || current !== flow.state || current.activeSession !== flow.session) throw new Error('This review is no longer current. Cancel and start again.')
+        invoked = true
+        return applySessionAddition(current, flow.review!)
+      }, 'Exercise added only to this session')
+      if (saved) setAdditionFlow(null)
+      else setAdditionError('Addition was not saved. Your review, form and original load entries are still here; retry when storage is available.')
+    } catch (cause) { setAdditionError(cause instanceof Error ? cause.message : 'Unable to save addition.') }
+    finally { attempting = false; additionBusy.current = false }
+  }
   const completed = session?.sets.filter(set => set.completed).length ?? 0
   const rest = session?.restUntil ? Math.max(0, Math.ceil((session.restUntil - now) / 1000)) : 0
   return <section>
@@ -153,6 +199,14 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
       <p id="workout-load-range" className="session-note">Load range: {measurementRange('load', unit)}. Leave blank for bodyweight; 0 records an explicit zero load.</p>
       {session.restUntil !== null && <div className="rest-timer" role="status"><strong>{rest > 0 ? `Rest: ${formatTime(rest)}` : 'Rest complete'}</strong><button className="secondary-button" onClick={() => change(current => ({ ...current, restUntil: null }))}>Dismiss rest timer</button></div>}
     </>}
+    {session && <><button type="button" className="secondary-button" disabled={!!replacement || !!addition || workout.exercises.length >= 50 || session.sets.length >= 2500} onClick={openAddition}><Plus />Add exercise to this session</button>
+      {workout.exercises.length >= 50 && <p className="session-note">This session has reached the 50-exercise limit. No exercises will be removed to make room.</p>}
+      {session.sets.length >= 2500 && <p className="session-note">This session has reached the 2,500-set-row limit. No rows will be truncated.</p>}
+    </>}
+    {addition && <SessionAddition workouts={state.workouts} review={addition.review} stale={!validAdditionContext(addition)} error={additionError} exerciseCount={addition.session.workout.exercises.length} rowCount={addition.session.sets.length}
+      onReview={exercise => selectAddition(addition, exercise)} onCancel={() => { if (mounted.current && additionRef.current === addition) setAdditionFlow(null) }}
+      onBack={() => { if (validAdditionContext(addition)) setAdditionFlow({ ...addition, review: null, draftSnapshot: '', draftGeneration: loadEdits.current }) }}
+      onConfirm={() => confirmAddition(addition)} />}
     {replacement && <SessionReplacement workouts={state.workouts} sourceName={replacement.sourceName} review={replacement.review} drafts={replacement.drafts} stale={!validContext(replacement)} error={replacementError}
       onSelect={exercise => selectReplacement(replacement, exercise)} onCancel={() => { if (mounted.current && flowRef.current === replacement) setFlow(null) }}
       onBack={() => { if (validContext(replacement)) setFlow({ ...replacement, review: null, drafts: {}, draftSnapshot: '', draftGeneration: loadEdits.current }) }}
@@ -198,13 +252,13 @@ export default function WorkoutSession({ state, update, readGeneration }: { stat
             }}><Trash2 /></button>
             {last && <small className="previous-set">Last: {last.reps ?? last.seconds ?? '—'}{last.seconds !== null ? ' sec' : ' reps'} · {last.weightKg === null ? 'Bodyweight' : `${formatMeasurement(last.weightKg, 'load', unit)} ${measurementUnit('load', unit)}`} </small>}
           </div>
-        })}</div><button type="button" className="secondary-button" disabled={!sets.some(set => !set.completed) || !!replacement} onClick={() => openReplacement(exercise, exerciseLabel)}>Replace unfinished {exerciseLabel} sets</button><button className="secondary-button" disabled={sets.length >= 50 || session.sets.length >= 2500 || Math.max(...sets.map(set => set.setNumber)) >= 50} onClick={() => change(current => ({ ...current, sets: [...current.sets, { id: uid(), exerciseId: exercise.id, setNumber: Math.max(0, ...sets.map(set => set.setNumber)) + 1, reps: null, seconds: null, weightKg: null, rpe: null, warmup: false, completed: false }] }))}><Plus />Add set</button></>}
+        })}</div><button type="button" className="secondary-button" disabled={!sets.some(set => !set.completed) || !!replacement || !!addition} onClick={() => openReplacement(exercise, exerciseLabel)}>Replace unfinished {exerciseLabel} sets</button><button className="secondary-button" disabled={sets.length >= 50 || session.sets.length >= 2500 || Math.max(...sets.map(set => set.setNumber)) >= 50} onClick={() => change(current => ({ ...current, sets: [...current.sets, { id: uid(), exerciseId: exercise.id, setNumber: Math.max(0, ...sets.map(set => set.setNumber)) + 1, reps: null, seconds: null, weightKg: null, rpe: null, warmup: false, completed: false }] }))}><Plus />Add set</button></>}
       </article>
     })}</div>
     {session && <><label className="notes-field">Session notes<textarea placeholder="How did this session feel?" value={session.notes} onChange={event => change(current => ({ ...current, notes: event.target.value }))} maxLength={2000} /></label>
       {error && <p role="alert" className="error-message">{error}</p>}
       <div className="session-actions"><button className="primary-button" disabled={completed === 0} onClick={finish}><CheckCircle2 />Finish and save workout</button>
-        <button className="secondary-button danger" onClick={() => { if (!viewIsCurrent()) return; if (window.confirm('Discard this unfinished session? Saved workout history will be kept.')) update(current => { assertCurrentState(current); return { ...current, activeSession: null } }, 'Unfinished session discarded') }}><RotateCcw />Discard session</button></div>
+        <button className="secondary-button danger" onClick={() => { if (!viewIsCurrent()) return; if (window.confirm('Discard this unfinished session? Saved workout history will be kept.')) { setAdditionFlow(null); update(current => { assertCurrentState(current); return { ...current, activeSession: null } }, 'Unfinished session discarded') } }}><RotateCcw />Discard session</button></div>
     </>}
   </section>
 }

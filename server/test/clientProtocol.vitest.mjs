@@ -4,6 +4,7 @@ import { CoachingClient } from '../../src/coaching'
 import { freshState, parseBackup } from '../../src/storage'
 import { finishSession, startSession } from '../../src/session'
 import { applySessionReplacement, reviewSessionReplacement } from '../../src/sessionReplacement'
+import { applySessionAddition, reviewSessionAddition } from '../../src/sessionAddition'
 import { createApp } from '../app.mjs'
 import { openDatabase } from '../database.mjs'
 
@@ -248,5 +249,70 @@ describe('equipment metadata through the real account and scoped-sharing contrac
     expect(revoked.scopes).toEqual([])
     await expect(c.snapshot(revoked)).rejects.toMatchObject({ code: 'coaching_conflict' })
     expect((await athlete.exportAccount(PASSWORD)).sync.state).toBeNull()
+  })
+})
+
+describe('session-only additions through the real account and scoped-sharing contract', () => {
+  it('retains added blank rows in own snapshots, excludes active work from coach access and snapshots completed labels', async () => {
+    const f = service({ coachingEnabled: true })
+    const athlete = (await f.registered('addition-athlete@example.test')).client
+    const coach = (await f.registered('addition-coach@example.test')).client
+    await athlete.setConsent(true); await athlete.inspectSync()
+    const state = freshState(); state.profile.unit = 'imperial'
+    const startedAt = Date.parse('2026-10-15T10:00:00Z')
+    const earlier = startSession(state.workouts[0], startedAt - 86_400_000)
+    earlier.sets[0] = { ...earlier.sets[0], completed: true, reps: 8, weightKg: 24.123456789 }
+    state.logs = [finishSession(earlier, startedAt - 86_340_000)]
+    state.planHistory = [{ id: 'addition-prior-plan', savedAt: new Date(startedAt).toISOString(), label: 'Synthetic prior plan', workouts: structuredClone(state.workouts) }]
+    state.activeSession = startSession(state.workouts[0], startedAt)
+    state.activeSession.runningSince = null; state.activeSession.elapsedSeconds = 123.5
+    state.activeSession.restUntil = startedAt + 200_000
+    state.activeSession.sets[0] = { ...state.activeSession.sets[0], completed: true, reps: 9, weightKg: 31.123456789, rpe: 7.5, warmup: true }
+    const original = structuredClone(state)
+    const selected = { id: 'session-only-source', name: 'Synthetic session-only timed movement', sets: 2, reps: '25 sec', restSeconds: 40, category: 'Synthetic test category', notes: 'Synthetic active-entry note', equipment: ['exercise-mat'] }
+    const added = applySessionAddition(state, reviewSessionAddition(state, selected))
+    const movement = added.activeSession.workout.exercises.at(-1)
+    expect(movement).toEqual({ ...selected, id: expect.any(String) })
+    expect(movement.id).not.toBe(selected.id)
+    expect(added.activeSession.sets.slice(0, original.activeSession.sets.length)).toEqual(original.activeSession.sets)
+    expect(added.activeSession.sets.slice(-2)).toEqual([1, 2].map(setNumber => ({ id: expect.any(String), exerciseId: movement.id, setNumber, reps: null, seconds: null, weightKg: null, rpe: null, completed: false, warmup: false })))
+    expect(added.activeSession.elapsedSeconds).toBe(123.5)
+    expect(added.activeSession.restUntil).toBe(original.activeSession.restUntil)
+    expect(state).toEqual(original)
+    const expected = pausedCloudState(parseBackup(JSON.stringify(added)))
+    await athlete.upload(added, 0, true)
+    const saved = await athlete.inspectSync()
+    expect(saved.state).toEqual(expected)
+    expect(saved.state.activeSession.restUntil).toBeNull()
+    expect((await athlete.exportAccount(PASSWORD)).sync.state).toEqual(expected)
+    const a = new CoachingClient(athlete), c = new CoachingClient(coach)
+    await a.invite(coach.session.user.email, true)
+    await c.accept((await c.overview()).invitations[0], true)
+    await a.consent((await a.overview()).relationships[0], ['training'], true)
+    const relationship = (await c.overview()).relationships[0]
+    const before = await c.snapshot(relationship)
+    expect(before.categories.training.logs).toEqual(original.logs)
+    expect(before.categories.training.workouts).toEqual(original.workouts)
+    expect(JSON.stringify(before)).not.toContain(selected.name)
+    expect(JSON.stringify(before)).not.toContain('activeSession')
+    const restored = parseBackup(JSON.stringify(saved.state))
+    const row = restored.activeSession.sets.find(item => item.exerciseId === movement.id)
+    row.seconds = 25; row.completed = true; row.weightKg = 3.123456789
+    const completed = finishSession(restored.activeSession, startedAt + 300_000)
+    restored.activeSession = null; restored.logs = [completed, ...restored.logs]
+    await athlete.upload(restored, saved.revision, true)
+    const final = (await athlete.inspectSync()).state
+    expect(final).toEqual(restored)
+    expect(final.logs[0].exerciseSnapshots).toContainEqual({ id: movement.id, name: selected.name, category: selected.category })
+    expect(final.logs[0].sets.find(item => item.id === row.id)).toEqual(row)
+    expect(final.logs[1]).toEqual(original.logs[0])
+    expect(final.workouts).toEqual(original.workouts); expect(final.planHistory).toEqual(original.planHistory)
+    const after = await c.snapshot(relationship)
+    expect(after.categories.training.logs[0]).toEqual(final.logs[0])
+    expect(JSON.stringify(after)).not.toContain('"equipment":')
+    expect(JSON.stringify(after)).not.toContain(selected.notes)
+    expect((await coach.exportAccount(PASSWORD)).sync.state).toBeNull()
+    await athlete.setConsent(false)
+    await expect(c.snapshot(relationship)).rejects.toMatchObject({ code: 'sharing_unavailable' })
   })
 })

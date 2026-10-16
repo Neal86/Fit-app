@@ -3,6 +3,7 @@ import { CloudClient } from '../../src/cloud'
 import { PrivateChallengeClient } from '../../src/privateChallenges'
 import { freshState } from '../../src/storage'
 import { finishSession, startSession } from '../../src/session'
+import { applySessionAddition, reviewSessionAddition } from '../../src/sessionAddition'
 import { createApp } from '../app.mjs'
 import { openDatabase } from '../database.mjs'
 
@@ -125,5 +126,39 @@ describe('private challenge real client/server protocol, synthetic records only'
     const client = new PrivateChallengeClient(new CloudClient('', async () => { calls++; throw new Error('Unexpected request') }))
     await expect(client.overview()).rejects.toBeDefined()
     expect(calls).toBe(0)
+  })
+
+  it('does not count added movements or an unfinished session as extra completed-work days', async () => {
+    const f = service(), a = await f.account('addition-count-a@example.test'), b = await f.account('addition-count-b@example.test')
+    const window = { startDate: day(f.now - 6 * 86_400_000), endDate: day(f.now) }
+    const time = Date.parse(`${day(f.now - 86_400_000)}T12:00:00Z`)
+    const state = freshState()
+    state.logs = [recordedLog(state, time)]
+    state.activeSession = startSession(state.workouts[0], time + 60_000)
+    state.activeSession.runningSince = null
+    const movement = { id: 'count-only-draft', name: 'Synthetic addition count marker', category: 'Synthetic', sets: 2, reps: '8', restSeconds: 30, equipment: [] }
+    const added = applySessionAddition(state, reviewSessionAddition(state, movement))
+    await a.cloud.setConsent(true); await a.cloud.inspectSync(); await a.cloud.upload(added, 0, true)
+    await b.cloud.setConsent(true)
+    await a.challenges.invite(b.cloud.session.user.email, window, true)
+    await b.challenges.accept((await b.challenges.overview()).invitations[0], true)
+    await a.challenges.consent((await a.challenges.overview()).challenges[0], true)
+    await b.challenges.consent((await b.challenges.overview()).challenges[0], true)
+    const mine = (await a.challenges.overview()).challenges[0]
+    const before = await a.challenges.counts(mine)
+    expect(before).toEqual({ challengeId: mine.id, challengeVersion: mine.version, metric: 'recorded_training_days', selfReported: true, ownRecordedDays: 1, peerRecordedDays: null })
+    const saved = await a.cloud.inspectSync()
+    const restored = saved.state
+    for (const row of restored.activeSession.sets.slice(-2)) { row.reps = 8; row.completed = true }
+    const log = finishSession(restored.activeSession, time + 180_000)
+    restored.logs = [log, ...restored.logs]; restored.activeSession = null
+    await a.cloud.upload(restored, saved.revision, true)
+    expect((await a.cloud.inspectSync()).state.logs).toHaveLength(2)
+    expect(await a.challenges.counts(mine)).toEqual(before)
+    const theirs = (await b.challenges.overview()).challenges[0]
+    const peer = await b.challenges.counts(theirs)
+    expect(peer.peerRecordedDays).toBe(1)
+    expect(JSON.stringify(peer)).not.toContain(movement.name)
+    expect(Object.keys(peer).sort()).toEqual(Object.keys(before).sort())
   })
 })
